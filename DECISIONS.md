@@ -4,88 +4,84 @@
 
 ## ADR-001: Vanilla JS over Stimulus
 
-**Date:** 2025-05-03
+**Date:** 2025-05-03  
 **Status:** Accepted
 
 **Context:**
-Contao 5 ships the Stimulus framework (via `@hotwired/stimulus`) as part of `contao/core-bundle`. Using Stimulus would give lifecycle callbacks, controller auto-wiring, and clean separation of concerns. However, integrating Stimulus requires either a build step (Webpack Encore / Vite) or loading it as a pre-built script. The Design+ theme project has no JavaScript build pipeline and adding one for a ~300-line utility script is disproportionate overhead.
+Contao 5 ships Stimulus. Using it would give lifecycle callbacks and clean separation of concerns, but requires a build pipeline. The Design+ theme project has no JS build step and adding one for a ~250-line utility script is disproportionate.
 
 **Decision:**
-Use a vanilla JavaScript IIFE (immediately invoked function expression) loaded as a plain `<script>` tag. No transpilation, no bundler, no npm dependencies.
+Vanilla IIFE loaded as a plain `<script defer>` tag. No transpilation, no bundler, no npm dependencies.
 
 **Consequences:**
-- (+) Zero build tooling — the file is served directly from `public/js/`
+- (+) Zero build tooling — file served directly from `public/js/`
 - (+) Works immediately after `composer require` + `assets:install`
-- (-) No TypeScript, no module system, no auto-imports
-- (-) If the script grows substantially (>1000 lines), refactoring into Stimulus or ES modules with a build step should be reconsidered
+- (-) No TypeScript or module system; if the script grows past ~600 lines consider migrating to Stimulus
 
 ---
 
 ## ADR-002: Template injection via `outputBackendTemplate` hook
 
-**Date:** 2025-05-03
-**Status:** Accepted
+**Date:** 2025-05-03  
+**Status:** Accepted — extended with popup guard (2026-05)
 
 **Context:**
-Two approaches exist for injecting HTML into the Contao backend:
-1. **`outputBackendTemplate` Contao hook** — fires once per backend template render, receives the template name and output buffer
-2. **`KernelEvents::RESPONSE` Symfony event listener** — fires on every HTTP response, requires manually checking `Content-Type`, the request route, and the response body
+Two approaches for injecting HTML into the backend:
+1. `outputBackendTemplate` hook — fires per template render, receives template name and buffer
+2. `KernelEvents::RESPONSE` — fires on every response; requires manually checking scope and body
 
 **Decision:**
-Use the `outputBackendTemplate` hook with a check for `$template === 'be_main'`.
+Use the hook with `$template === 'be_main'`. Extended with a server-side check for `?popup=1` and `?picker` to exclude popup windows and pickers from injection.
 
 **Consequences:**
-- (+) Scoped automatically to the main backend layout — no risk of injecting into `be_popup`, `be_login`, or API responses
-- (+) Follows the Contao convention; other backend customisations in this project also use hooks
-- (-) Hook only fires for PHP-template-rendered responses. If a future Contao version migrates `be_main` to a pure Twig template rendered outside the `BackendTemplate` class, this hook will stop firing. Migration path: switch to `KernelEvents::RESPONSE` with a `_scope === 'backend'` check.
-- (-) The hook fires on every `be_main` render, not just on page load. This is fine since the injection is idempotent (CSS/JS are deduplicated by the browser).
+- (+) Scoped to the main backend layout — never fires for login, API, or popup responses
+- (+) The popup/picker guard is in PHP, so no HTML/CSS/JS ever reaches those windows
+- (-) If a future Contao version moves `be_main` to a Twig-only template, the hook stops firing. Migration path: switch to `KernelEvents::RESPONSE` with a `_scope === 'backend'` and no-popup check.
 
 ---
 
-## ADR-003: Preview URL via `/preview.php` instead of explicit token
+## ADR-003: Preview URL via `PageModel::getAbsoluteUrl()`
 
-**Date:** 2025-05-03
-**Status:** Accepted (with known limitation)
-
-**Context:**
-Contao 5 has a `FrontendPreviewAuthenticator` service that can set a preview flag on the frontend session. The "proper" approach for a backend tool to preview frontend pages is:
-1. Call `FrontendPreviewAuthenticator::authenticateFrontendGuest()` to create a preview session
-2. Get the resulting preview token
-3. Pass `?_preview_token=…` (or similar) to the frontend URL
-
-However, this involves a second HTTP request from PHP, token management, and potential session isolation issues. In the Contao 5.7 source, the preview entry point `preview.php` already handles this by checking if a valid backend session cookie is present — if so, it activates preview mode automatically (same Symfony app, shared session store).
-
-**Decision:**
-Use `/preview.php/{language}/{alias}.html` as the iframe URL. No explicit token generation.
-
-**Consequences:**
-- (+) Simple — only requires knowing the page alias and language
-- (+) Inherits the backend user's existing session → unpublished content is visible
-- (+) No PHP token generation code to maintain
-- (-) Relies on backend and frontend sharing the same session (same origin, same Symfony kernel) — breaks if the frontend is on a separate domain or a CDN-fronted setup
-- (-) Contao `preview.php` behaviour is not a documented API contract; it could change
-- **Mitigation:** If this breaks, upgrade to explicit `FrontendPreviewAuthenticator` token injection in `PreviewResolverController`.
-
----
-
-## ADR-004: CSS fixed sidebar vs. split-pane vs. floating overlay
-
-**Date:** 2025-05-03
+**Date:** 2026-05 (revised from original 2025-05-03)  
 **Status:** Accepted
 
 **Context:**
-Options for rendering the preview panel:
-1. **CSS fixed sidebar** — position: fixed on the right; push main content with margin-right
-2. **Split-pane JS library** — divides the backend into two resizable panes
-3. **Floating overlay** — always on top, no layout adjustment
+The original implementation used `/preview.php/{language}/{alias}.html` as the iframe URL. This failed because:
+- `language` is only stored on the root page, not on every child page
+- The `/preview.php` front controller does not exist in standard Contao 5 installations in this path form
+- The approach required manually assembling URL parts that Contao already computes internally
 
 **Decision:**
-Use a CSS fixed sidebar with `margin-right` on `#wrapper`, toggled via a CSS custom property (`--clp-sidebar-width`).
+Use `PageModel::findWithDetails($pageId)->getAbsoluteUrl()`. `findWithDetails()` walks the full page hierarchy to inherit urlPrefix, urlSuffix, language, and domain from the root page. The result is a fully-qualified absolute URL (`http://example.com/de/home.html`).
+
+Non-routable page types (`error_404`, `error_403`, `folder`, `root`) are handled by walking up the ancestry tree until a routable type (`regular`, `redirect`, `forward`) is found.
 
 **Consequences:**
-- (+) Pure CSS — no JavaScript layout libraries
-- (+) The `--clp-sidebar-width` custom property drives both the margin and the sidebar visibility in a single variable change
-- (+) Drag-to-resize is achievable with a simple mousedown delta calculation, no library needed
-- (+) Contao's `#wrapper` is the correct single layout container to offset (verified in Contao 5.7 `be_main`)
-- (-) On viewports narrower than 1400px, the sidebar overlays content rather than pushing it (to avoid horizontal overflow). This is intentional but means the sidebar obscures part of the backend on laptop screens.
-- (-) If Contao changes `#wrapper` to a different selector or uses a different layout model (e.g. CSS Grid with named areas), the margin hack will break. The fallback is to use `padding-right` on `body` instead.
+- (+) Correct URL for all page types, multi-language setups, and custom urlPrefix/Suffix configurations
+- (+) Reuses Contao's own URL generation logic — no manual assembly
+- (+) Non-routable pages degrade gracefully instead of returning a broken URL
+- (-) Requires `ContaoFramework::initialize()` in the controller to bootstrap Contao's model layer
+
+---
+
+## ADR-004: Sidebar as flex child of `#container` with `data-turbo-permanent`
+
+**Date:** 2026-05 (revised from original 2025-05-03)  
+**Status:** Accepted
+
+**Context:**
+The original implementation used `position: fixed` on the sidebar with `margin-right` on `#wrapper`. This had two problems:
+1. Contao's `#container` is `display: flex` with `#left` (nav) and `#main` (content) as children. A fixed-positioned sidebar doesn't participate in this flex flow, causing layout overlap.
+2. Turbo's body swap destroyed and recreated the sidebar on every navigation, causing the iframe to blank out.
+
+**Decision:**
+1. Inject the sidebar as a third flex child of `#container` (after `</main>`). CSS adjustments: `#left` gets `flex-shrink: 0`, `#main` gets `flex: 1 1 0%` and `width: auto !important`.
+2. Mark the sidebar `<aside>` with `data-turbo-permanent`. Turbo moves the element (with its live iframe) to every new body — the preview never blanks during navigation.
+3. Use a `turbo:before-render` listener to pre-stamp `clp-open` on the incoming body, preventing a one-paint flash where the sidebar would be `display: none`.
+
+**Consequences:**
+- (+) Sidebar participates in the flex layout — `#left` never compresses, only `#main` shrinks
+- (+) iframe content survives every navigation — no blank flash
+- (+) Resize handle uses Pointer Events + `setPointerCapture` — drag works even when cursor leaves the browser window
+- (-) Depends on Contao's `#container` being `display: flex` with the specific `#left`/`#main` structure (verified for Contao 5.7)
+- (-) On screens < 1200px the sidebar switches to `position: fixed` overlay to avoid crushing `#main` below usable width

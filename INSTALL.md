@@ -2,8 +2,8 @@
 
 ## Prerequisites
 
-- Contao 5.3+ installed and running (this project: `rl-contao-theme-design`)
-- PHP 8.2+
+- Contao 5.5+ with Symfony 7.x
+- PHP 8.4 (this project uses `php:8.4-fpm-alpine` via Docker)
 - Composer 2.x
 
 ---
@@ -15,16 +15,9 @@ The bundle lives at:
 rl-contao-theme-design/packages/contao-live-preview-bundle/
 ```
 
-This is relative to the Contao installation root, so the path for Composer is:
-```
-./packages/contao-live-preview-bundle
-```
-
 ---
 
-## Step 2: Add path repository to Contao's `composer.json`
-
-In the root `composer.json` of the Contao project, add a `repositories` section (or extend it if it already exists):
+## Step 2: Add path repository to `composer.json`
 
 ```json
 {
@@ -45,7 +38,7 @@ In the root `composer.json` of the Contao project, add a `repositories` section 
 composer require vendor/contao-live-preview-bundle:*@dev
 ```
 
-Composer will symlink (or copy) the bundle into `vendor/vendor/contao-live-preview-bundle/`.
+Composer symlinks the bundle into `vendor/vendor/contao-live-preview-bundle/`.
 
 ---
 
@@ -55,9 +48,11 @@ Composer will symlink (or copy) the bundle into `vendor/vendor/contao-live-previ
 docker compose exec php bin/console assets:install --symlink
 ```
 
-This creates `public/bundles/contaoliveprevie/` pointing to the bundle's `public/` directory.
+Symfony derives the symlink name from the bundle class `ContaoLivePreviewBundle` → lowercase, no separators → **`contaolivepreview`**.
 
-> **Asset symlink name:** Symfony derives the symlink from the bundle class name `ContaoLivePreviewBundle` → lowercase → `contaolivepreview`. The paths are already correct in `InjectLivePreviewListener.php`. No action needed.
+Result: `public/bundles/contaolivepreview/` → `packages/contao-live-preview-bundle/public/`
+
+The CSS/JS paths in `InjectLivePreviewListener` already use this name.
 
 ---
 
@@ -68,36 +63,42 @@ docker compose exec php bin/console cache:clear
 docker compose exec php bin/console cache:warmup
 ```
 
-Both steps are required. `cache:warmup` registers the `@ContaoLivePreview` Twig namespace.
+**Both steps are required.** `cache:warmup` registers the `@ContaoLivePreview` Twig namespace. `cache:clear` alone is not sufficient.
 
 ---
 
 ## Step 6: Test
 
-1. Open the Contao backend: http://localhost:8080/contao
-2. Navigate to **Pages** and click on a page to edit it
-3. The live preview sidebar should appear on the right side of the backend
-4. The iframe should load the corresponding frontend page
+1. Open the backend: http://localhost:8080/contao
+2. Navigate to **Artikel** and open any content element for editing
+3. The Preview sidebar should appear on the right
+4. The iframe should load the corresponding frontend page URL (shown in the toolbar)
+5. Verify popups are clean: click the pencil icon to open article properties — the popup must NOT contain the sidebar
 
 ---
 
 ## Troubleshooting
 
 **Sidebar does not appear**
-- Check that the hook fired: add `dump($template)` in `InjectLivePreviewListener` and run any backend page
-- Verify `assets:install` ran and the symlink exists: `ls -la public/bundles/`
-- Check browser console for 404 on CSS/JS files
+- Verify `assets:install` ran: `ls -la public/bundles/contaolivepreview/`
+- Check browser console for 404 on `/bundles/contaolivepreview/css/live-preview.css`
+- Run `cache:clear && cache:warmup` — `cache:clear` alone is not enough
 
-**iframe shows blank / 403**
-- Navigate to the preview URL directly in a new tab: `/preview.php/de/home.html`
-- If it shows a login page, the session sharing between backend and `preview.php` is not working — see ADR-003 for the mitigation path
+**iframe shows blank white (no URL in toolbar)**
+- Open DevTools → Network → check if `/contao/live-preview/resolve` returns 200
+- If 401: session expired, re-login
+- If 404: check routing with `bin/console debug:router | grep live-preview`
+- If 200 but empty `previewUrl`: the page type may not be routable — check `tl_page.type`
 
-**"Twig template not found" error**
-- Run `cache:warmup` — the `@ContaoLivePreview` namespace is registered during warmup, not cache:clear
+**iframe shows correct URL but content is blank**
+- Hard-reload backend (`Cmd+Shift+R`) to pick up latest JS (no cache-busting on the JS file)
+
+**"Twig template not found"**
+- Run `bin/console cache:warmup` — the `@ContaoLivePreview` namespace is registered during warmup
 
 **Resolve endpoint returns 401**
-- Ensure you are logged in to the backend (`ROLE_USER` is required)
-- Test directly: `curl -b "PHPSESSID=..." http://localhost:8080/contao/live-preview/resolve?table=tl_page&id=1`
+- Ensure you are logged in (`ROLE_USER` required)
+- Test: `curl -b cookies.txt 'http://localhost:8080/contao/live-preview/resolve?table=tl_page&id=1'`
 
 ---
 
