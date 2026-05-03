@@ -59,6 +59,10 @@
     // Empty array when context is tl_page (no article to highlight).
     let highlightSelectors = [];
 
+    // 'smooth' for article context (user navigated to a different article — animate the scroll).
+    // 'instant' for content-element context and after saves (position barely changes — no animation).
+    let scrollBehavior = 'smooth';
+
     let globalListenersBound = false;
     let saveFlashObserver    = null;
 
@@ -244,10 +248,12 @@
         }
     }
 
-    function sendHighlight() {
+    function sendHighlight(behavior) {
         if (!highlightSelectors.length || !frame?.contentWindow) return;
+        // When called as a load event listener, behavior is an Event object — ignore it.
+        const b = (behavior === 'instant' || behavior === 'smooth') ? behavior : scrollBehavior;
         try {
-            frame.contentWindow.postMessage({ type: 'clp:highlight', selectors: highlightSelectors }, '*');
+            frame.contentWindow.postMessage({ type: 'clp:highlight', selectors: highlightSelectors, scrollBehavior: b }, '*');
         } catch { }
     }
 
@@ -265,6 +271,9 @@
 
             if (data.previewUrl) {
                 highlightSelectors = data.highlightSelectors || [];
+                // Smooth scroll when navigating to a different article; instant when
+                // switching between content elements (position barely changes).
+                scrollBehavior = ctx.table === 'tl_content' ? 'instant' : 'smooth';
 
                 if (urlDisplay) urlDisplay.textContent = data.previewUrl;
                 const openBtn = document.getElementById('clp-open-tab');
@@ -329,7 +338,7 @@
                     } catch { }
                 });
             }
-            sendHighlight();
+            sendHighlight('instant'); // after a save: jump, don't animate
         }, { once: true });
     }
 
