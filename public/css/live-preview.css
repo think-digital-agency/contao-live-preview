@@ -1,0 +1,313 @@
+/*
+ * Contao Live Preview – sidebar stylesheet
+ *
+ * Key DOM assumptions about the Contao 5 backend:
+ *   - The main wrapper is #wrapper or .wrapper (Contao 5 uses #wrapper)
+ *   - Backend uses CSS custom properties for theming in Contao 5+
+ *   - The sidebar is appended inside <body> as a fixed panel
+ *
+ * Layout strategy:
+ *   A CSS custom property --clp-sidebar-width is set to 0 (collapsed)
+ *   or the actual sidebar width (expanded). The main wrapper gets a
+ *   right-padding equal to this value via a body-level rule so Contao's
+ *   existing layout flex/grid is not disturbed.
+ */
+
+/* -------------------------------------------------------------------------
+   Custom properties (sidebar-level overrides possible via inline style)
+   ------------------------------------------------------------------------- */
+:root {
+    --clp-sidebar-width: 0px;
+    --clp-bg:            #f5f6f7;
+    --clp-border:        #d0d3d8;
+    --clp-toolbar-bg:    #2b2f36;
+    --clp-toolbar-color: #e8eaed;
+    --clp-btn-hover:     rgba(255,255,255,.12);
+    --clp-accent:        #4a90d9;
+    --clp-radius:        4px;
+    --clp-shadow:        -4px 0 16px rgba(0,0,0,.18);
+    --clp-z:             1000;
+}
+
+/* -------------------------------------------------------------------------
+   Push Contao's main content area to leave room for the sidebar.
+   #wrapper is the outermost layout container in Contao 5 backend.
+   ------------------------------------------------------------------------- */
+#wrapper {
+    margin-right: var(--clp-sidebar-width) !important;
+    transition: margin-right .22s ease;
+}
+
+/* -------------------------------------------------------------------------
+   Sidebar shell
+   ------------------------------------------------------------------------- */
+.clp-sidebar {
+    --clp-width: 420px;
+
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: var(--clp-width);
+    z-index: var(--clp-z);
+
+    display: flex;
+    flex-direction: column;
+
+    background: var(--clp-bg);
+    border-left: 1px solid var(--clp-border);
+    box-shadow: var(--clp-shadow);
+
+    transform: translateX(0);
+    transition: transform .22s ease, width .1s ease;
+}
+
+.clp-sidebar--collapsed {
+    transform: translateX(100%);
+}
+
+/* -------------------------------------------------------------------------
+   Resize handle (left edge of sidebar)
+   ------------------------------------------------------------------------- */
+.clp-sidebar__resizer {
+    position: absolute;
+    top: 0;
+    left: -4px;
+    bottom: 0;
+    width: 8px;
+    cursor: col-resize;
+    z-index: 1;
+}
+
+.clp-sidebar__resizer:hover,
+.clp-sidebar__resizer:active {
+    background: var(--clp-accent);
+    opacity: .4;
+}
+
+/* -------------------------------------------------------------------------
+   Toolbar
+   ------------------------------------------------------------------------- */
+.clp-sidebar__toolbar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 8px;
+    height: 44px;
+    flex-shrink: 0;
+
+    background: var(--clp-toolbar-bg);
+    color: var(--clp-toolbar-color);
+    border-bottom: 1px solid rgba(255,255,255,.08);
+}
+
+.clp-sidebar__icon {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+    color: var(--clp-accent);
+}
+
+.clp-sidebar__label {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .5px;
+    text-transform: uppercase;
+    white-space: nowrap;
+    flex-shrink: 0;
+    color: var(--clp-toolbar-color);
+}
+
+.clp-sidebar__url-input {
+    flex: 1;
+    min-width: 0;
+    padding: 3px 7px;
+    font-size: 11px;
+    font-family: monospace;
+    background: rgba(255,255,255,.08);
+    border: 1px solid rgba(255,255,255,.12);
+    border-radius: var(--clp-radius);
+    color: var(--clp-toolbar-color);
+    outline: none;
+    cursor: default;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.clp-sidebar__url-input::placeholder {
+    color: rgba(255,255,255,.35);
+    font-style: italic;
+}
+
+/* -------------------------------------------------------------------------
+   Toolbar buttons
+   ------------------------------------------------------------------------- */
+.clp-sidebar__btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+
+    border: none;
+    background: transparent;
+    color: var(--clp-toolbar-color);
+    cursor: pointer;
+    border-radius: var(--clp-radius);
+    padding: 5px;
+    line-height: 1;
+    transition: background .15s;
+}
+
+.clp-sidebar__btn:hover:not(:disabled) {
+    background: var(--clp-btn-hover);
+}
+
+.clp-sidebar__btn:disabled {
+    opacity: .35;
+    cursor: not-allowed;
+}
+
+.clp-sidebar__btn--toggle {
+    border-left: 1px solid rgba(255,255,255,.1);
+    padding-left: 8px;
+    margin-left: 2px;
+}
+
+.clp-sidebar__btn--toggle .clp-icon-chevron-right {
+    transition: transform .22s ease;
+}
+
+.clp-sidebar--collapsed .clp-icon-chevron-right {
+    transform: rotate(180deg);
+}
+
+/* -------------------------------------------------------------------------
+   Body (iframe area)
+   ------------------------------------------------------------------------- */
+.clp-sidebar__body {
+    flex: 1;
+    overflow: hidden;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+}
+
+.clp-sidebar__iframe {
+    flex: 1;
+    width: 100%;
+    height: 100%;
+    border: none;
+    background: #fff;
+}
+
+/* -------------------------------------------------------------------------
+   Loading indicator
+   ------------------------------------------------------------------------- */
+.clp-sidebar__loading {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    font-size: 13px;
+    color: #777;
+    background: var(--clp-bg);
+}
+
+.clp-sidebar__spinner {
+    display: block;
+    width: 24px;
+    height: 24px;
+    border: 3px solid var(--clp-border);
+    border-top-color: var(--clp-accent);
+    border-radius: 50%;
+    animation: clp-spin .7s linear infinite;
+}
+
+@keyframes clp-spin {
+    to { transform: rotate(360deg); }
+}
+
+/* -------------------------------------------------------------------------
+   No-context placeholder
+   ------------------------------------------------------------------------- */
+.clp-sidebar__placeholder {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    padding: 32px 24px;
+    text-align: center;
+    color: #aaa;
+}
+
+.clp-sidebar__placeholder svg {
+    opacity: .3;
+}
+
+.clp-sidebar__placeholder p {
+    margin: 0;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+/* -------------------------------------------------------------------------
+   Floating toggle (visible only when sidebar is collapsed)
+   ------------------------------------------------------------------------- */
+.clp-floating-toggle {
+    position: fixed;
+    bottom: 24px;
+    right: 16px;
+    z-index: calc(var(--clp-z) - 1);
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    border: none;
+
+    background: var(--clp-toolbar-bg);
+    color: var(--clp-toolbar-color);
+    box-shadow: 0 3px 10px rgba(0,0,0,.3);
+    cursor: pointer;
+    transition: background .15s, transform .15s, box-shadow .15s;
+}
+
+.clp-floating-toggle:hover {
+    background: #3a4050;
+    transform: scale(1.07);
+    box-shadow: 0 5px 16px rgba(0,0,0,.35);
+}
+
+.clp-floating-toggle[hidden] {
+    display: none;
+}
+
+/* -------------------------------------------------------------------------
+   Responsive: on narrow viewports, sidebar floats over content
+   (no margin-right adjustment — avoids horizontal overflow)
+   ------------------------------------------------------------------------- */
+@media (max-width: 1399px) {
+    #wrapper {
+        margin-right: 0 !important;
+    }
+
+    .clp-sidebar {
+        --clp-width: 380px;
+        box-shadow: -6px 0 24px rgba(0,0,0,.28);
+    }
+}
+
+@media (max-width: 767px) {
+    .clp-sidebar {
+        --clp-width: 100vw;
+    }
+}
