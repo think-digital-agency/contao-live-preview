@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Vendor\ContaoLivePreviewBundle\Controller;
 
 use Contao\CoreBundle\Framework\ContaoFramework;
+use Contao\PageModel;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
@@ -32,7 +33,6 @@ class PreviewResolverController extends AbstractController
         $table = $request->query->getString('table');
         $id    = $request->query->getInt('id');
 
-        // Also support resolving by `do` parameter (page, article)
         $do = $request->query->getString('do');
         if ('' === $table && '' !== $do) {
             $table = $this->tableFromDo($do);
@@ -48,12 +48,11 @@ class PreviewResolverController extends AbstractController
             return $this->json(['error' => 'Page not found'], 404);
         }
 
-        $previewUrl = $this->buildPreviewUrl($pageData, $request);
+        $previewUrl = $this->buildPreviewUrl($pageData['pageId']);
 
         return $this->json([
             'pageId'     => $pageData['pageId'],
             'pageAlias'  => $pageData['alias'],
-            'language'   => $pageData['language'],
             'previewUrl' => $previewUrl,
         ]);
     }
@@ -68,30 +67,24 @@ class PreviewResolverController extends AbstractController
     }
 
     /**
-     * Builds the iframe preview URL.
-     *
-     * Uses /preview.php if available (Contao standard entry point for preview mode),
-     * otherwise falls back to constructing the URL from alias + language prefix.
-     * The backend user is already authenticated, so the preview.php route with a
-     * valid Contao backend session will render unpublished content.
-     *
-     * @param array{pageId: int, alias: string, language: string, dns: string} $pageData
+     * Uses Contao's PageModel to build the correct absolute frontend URL.
+     * findWithDetails() walks up the page hierarchy to inherit language, urlPrefix,
+     * domain etc. — avoiding the need to manually traverse tl_page to the root.
      */
-    private function buildPreviewUrl(array $pageData, Request $request): string
+    private function buildPreviewUrl(int $pageId): string
     {
-        $baseUrl = $request->getSchemeAndHttpHost();
+        $this->framework->initialize();
 
-        // Contao standard: /preview.php serves the frontend with preview authentication.
-        // We pass the page alias so the frontend router can resolve it.
-        $language = $pageData['language'];
-        $alias    = $pageData['alias'];
+        /** @var \Contao\Model\Registry $pageAdapter */
+        $pageAdapter = $this->framework->getAdapter(PageModel::class);
 
-        // Prefer the Contao preview entry point which inherits the backend session
-        // (same origin, both served from the same Symfony app).
-        if ('' !== $language) {
-            return $baseUrl.'/preview.php/'.$language.'/'.$alias.'.html';
+        /** @var PageModel|null $page */
+        $page = $pageAdapter->findWithDetails($pageId);
+
+        if (null === $page) {
+            return '';
         }
 
-        return $baseUrl.'/preview.php/'.$alias.'.html';
+        return $page->getAbsoluteUrl();
     }
 }
