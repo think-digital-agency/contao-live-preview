@@ -1,170 +1,120 @@
 /**
- * Contao Live Preview – vanilla JS, no build step required.
+ * Contao Live Preview – vanilla JS, no build step.
  *
- * Flow:
- *   URL/navigation change
- *     → parseContext()
- *     → resolvePreviewUrl()  (AJAX to /contao/live-preview/resolve)
- *     → setIframeSrc()
- *   Form submit / save flash detected
- *     → reloadPreview()
+ * URL disambiguation (verified against real Contao 5 backend URLs):
+ *
+ *   ?do=article&id=X&table=tl_content&act=edit  → id = content element (tl_content)
+ *   ?do=article&id=X&table=tl_content           → id = article        (tl_article, content list view)
+ *   ?do=article&id=X&table=tl_article&act=edit  → id = article        (tl_article)
+ *   ?do=article&id=X                            → id = article        (tl_article)
+ *   ?do=page&id=X                               → id = page           (tl_page)
  */
 
 (function () {
     'use strict';
-
-    // -------------------------------------------------------------------------
-    // Constants
-    // -------------------------------------------------------------------------
 
     const RESOLVE_ENDPOINT = '/contao/live-preview/resolve';
     const LS_OPEN_KEY      = 'clp_sidebar_open';
     const LS_WIDTH_KEY     = 'clp_sidebar_width';
     const DEFAULT_WIDTH    = 420;
     const MIN_WIDTH        = 280;
-    const MAX_WIDTH        = 900;
-    // Debounce delay after a navigation / URL change before re-resolving
-    const RESOLVE_DEBOUNCE = 300;
-    // Fallback delay after form submit to trigger iframe reload
-    const SAVE_DELAY       = 900;
-    // Wide-screen breakpoint: sidebar opens automatically when >= this width
-    const AUTO_OPEN_WIDTH  = 1400;
+    const MAX_WIDTH        = 800;
+    const RESOLVE_DEBOUNCE = 250;
+
+    let sidebar, frame, urlDisplay, openTabBtn, resizer;
+    let currentContext = null;
+    let resolveTimer   = null;
+    let isOpen         = false;
 
     // -------------------------------------------------------------------------
-    // DOM references (set after DOMContentLoaded)
+    // Boot
     // -------------------------------------------------------------------------
 
-    let sidebar, frame, urlInput, openTabBtn, refreshBtn, toggleBtn,
-        floatingToggle, loadingEl, noContextEl, resizer;
+    document.addEventListener('DOMContentLoaded', () => {
+        sidebar    = document.getElementById('clp-right');
+        frame      = document.getElementById('clp-frame');
+        urlDisplay = document.getElementById('clp-url-display');
+        resizer    = document.getElementById('clp-resizer');
+
+        if (!sidebar || !frame) return;
+
+        injectToggleButton();
+        restoreState();
+        bindResizer();
+        observeNavigation();
+        document.addEventListener('submit', handleFormSubmit);
+        observeSaveFlash();
+
+        triggerResolve();
+    });
+
+    // -------------------------------------------------------------------------
+    // Header toggle button
+    // Appends a <li> into #tmenu (the top-right Contao nav) before the burger.
+    // -------------------------------------------------------------------------
+
+    function injectToggleButton() {
+        const tmenu = document.getElementById('tmenu');
+        if (!tmenu) return;
+
+        const li = document.createElement('li');
+        li.id = 'clp-toggle-item';
+
+        const btn = document.createElement('button');
+        btn.id = 'clp-toggle-btn';
+        btn.type = 'button';
+        btn.title = 'Live Preview';
+        btn.setAttribute('aria-label', 'Live Preview umschalten');
+        // Contao uses inline SVG icons in the theme; we do the same.
+        btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg><span>Preview</span>';
+        btn.addEventListener('click', toggleSidebar);
+
+        li.appendChild(btn);
+
+        // Insert before the last <li class="burger"> if present, else append.
+        const burger = tmenu.querySelector('li.burger');
+        if (burger) {
+            tmenu.insertBefore(li, burger);
+        } else {
+            tmenu.appendChild(li);
+        }
+
+        openTabBtn = document.getElementById('clp-open-tab');
+    }
 
     // -------------------------------------------------------------------------
     // State
     // -------------------------------------------------------------------------
 
-    let currentPreviewUrl = '';
-    let resolveTimer      = null;
-    let isOpen            = false;
-    let currentContext    = null; // { table, id, do }
-
-    // -------------------------------------------------------------------------
-    // Init
-    // -------------------------------------------------------------------------
-
-    document.addEventListener('DOMContentLoaded', () => {
-        sidebar        = document.getElementById('clp-sidebar');
-        frame          = document.getElementById('clp-frame');
-        urlInput       = document.getElementById('clp-url-display');
-        openTabBtn     = document.getElementById('clp-open-tab');
-        refreshBtn     = document.getElementById('clp-refresh');
-        toggleBtn      = document.getElementById('clp-toggle');
-        floatingToggle = document.getElementById('clp-floating-toggle');
-        loadingEl      = document.getElementById('clp-loading');
-        noContextEl    = document.getElementById('clp-no-context');
-        resizer        = document.getElementById('clp-resizer');
-
-        if (!sidebar || !frame) {
-            return;
-        }
-
-        restoreState();
-        bindEvents();
-        observeNavigation();
-        triggerResolve();
-    });
-
-    // -------------------------------------------------------------------------
-    // State persistence
-    // -------------------------------------------------------------------------
-
     function restoreState() {
-        const savedOpen = localStorage.getItem(LS_OPEN_KEY);
+        const saved = localStorage.getItem(LS_OPEN_KEY);
+        // Default open on wide screens, closed on narrow
+        isOpen = saved !== null ? saved === '1' : window.innerWidth >= 1400;
 
-        if (savedOpen === null) {
-            // Auto-open on wide screens on first visit
-            isOpen = window.innerWidth >= AUTO_OPEN_WIDTH;
-        } else {
-            isOpen = savedOpen === '1';
-        }
-
-        const savedWidth = parseInt(localStorage.getItem(LS_WIDTH_KEY), 10);
+        const savedWidth = parseInt(localStorage.getItem(LS_WIDTH_KEY) || '0', 10);
         if (savedWidth >= MIN_WIDTH && savedWidth <= MAX_WIDTH) {
-            setSidebarWidth(savedWidth);
+            sidebar.style.setProperty('--clp-width', savedWidth + 'px');
         }
 
-        applySidebarState();
+        applyState();
     }
 
-    function applySidebarState() {
-        if (isOpen) {
-            sidebar.classList.remove('clp-sidebar--collapsed');
-            toggleBtn.setAttribute('aria-expanded', 'true');
-            toggleBtn.title = 'Vorschau einklappen';
-            floatingToggle.hidden = true;
-            document.documentElement.style.setProperty('--clp-sidebar-width', getSidebarWidth() + 'px');
-        } else {
-            sidebar.classList.add('clp-sidebar--collapsed');
-            toggleBtn.setAttribute('aria-expanded', 'false');
-            toggleBtn.title = 'Vorschau ausklappen';
-            floatingToggle.hidden = false;
-            document.documentElement.style.setProperty('--clp-sidebar-width', '0px');
-        }
-
+    function applyState() {
+        document.body.classList.toggle('clp-open', isOpen);
         localStorage.setItem(LS_OPEN_KEY, isOpen ? '1' : '0');
-    }
 
-    function getSidebarWidth() {
-        const w = parseInt(getComputedStyle(sidebar).getPropertyValue('--clp-width').trim(), 10);
-        return isNaN(w) ? DEFAULT_WIDTH : w;
-    }
-
-    function setSidebarWidth(px) {
-        sidebar.style.setProperty('--clp-width', px + 'px');
-        document.documentElement.style.setProperty('--clp-sidebar-width', isOpen ? px + 'px' : '0px');
-        localStorage.setItem(LS_WIDTH_KEY, String(px));
-    }
-
-    // -------------------------------------------------------------------------
-    // Event bindings
-    // -------------------------------------------------------------------------
-
-    function bindEvents() {
-        // Sidebar toggle buttons
-        toggleBtn.addEventListener('click', toggleSidebar);
-        floatingToggle.addEventListener('click', () => {
-            isOpen = true;
-            applySidebarState();
-            if (currentPreviewUrl) {
-                setIframeSrc(currentPreviewUrl);
-            } else {
-                triggerResolve();
-            }
-        });
-
-        // Open in new tab
-        openTabBtn.addEventListener('click', () => {
-            if (currentPreviewUrl) {
-                window.open(currentPreviewUrl, '_blank', 'noopener');
-            }
-        });
-
-        // Manual refresh
-        refreshBtn.addEventListener('click', reloadPreview);
-
-        // Detect save via form submit
-        document.addEventListener('submit', handleFormSubmit);
-
-        // Detect save via flash message mutation
-        observeSaveFlash();
-
-        // Resize handle
-        bindResizer();
+        const btn = document.getElementById('clp-toggle-btn');
+        if (btn) {
+            btn.classList.toggle('active', isOpen);
+            btn.title = isOpen ? 'Live Preview schließen' : 'Live Preview öffnen';
+        }
     }
 
     function toggleSidebar() {
         isOpen = !isOpen;
-        applySidebarState();
-        if (isOpen && !frame.src && currentPreviewUrl) {
-            setIframeSrc(currentPreviewUrl);
+        applyState();
+        if (isOpen && currentContext && !frame.src) {
+            triggerResolve();
         }
     }
 
@@ -172,49 +122,40 @@
     // Context detection
     // -------------------------------------------------------------------------
 
-    /**
-     * Parses the current backend URL and returns a context descriptor.
-     * Returns null if no resolvable context is found.
-     */
     function parseContext() {
-        const params = new URLSearchParams(window.location.search);
-        const doVal  = params.get('do') || '';
-        const table  = params.get('table') || '';
-        const id     = parseInt(params.get('id') || '0', 10);
-        const act    = params.get('act') || '';
+        const p    = new URLSearchParams(window.location.search);
+        const doV  = p.get('do') || '';
+        const tbl  = p.get('table') || '';
+        const id   = parseInt(p.get('id') || '0', 10);
+        const act  = p.get('act') || '';
 
-        // Creating a new record — no stable page to resolve yet
-        if (act === 'create' && id === 0) {
-            return null;
+        if (id <= 0) return null;
+
+        // Content element: only when table=tl_content AND act=edit
+        if (tbl === 'tl_content' && act === 'edit') {
+            return { table: 'tl_content', id };
         }
 
-        // Editing a content element inside tl_article
-        if (table === 'tl_content' && id > 0) {
-            return { table: 'tl_content', id, do: doVal };
+        // Content-element list view: table=tl_content but no act → id is the ARTICLE
+        if (doV === 'article' && tbl === 'tl_content' && act === '') {
+            return { table: 'tl_article', id };
         }
 
-        // Editing an article or something nested under it
-        if (doVal === 'article' && id > 0 && table !== 'tl_content') {
-            return { table: 'tl_article', id, do: doVal };
+        // Article (edit or any other act, or tl_article table explicit)
+        if (doV === 'article' && id > 0) {
+            return { table: 'tl_article', id };
         }
 
-        // Editing a page directly
-        if (doVal === 'page' && id > 0) {
-            return { table: 'tl_page', id, do: doVal };
-        }
-
-        // Fallback: if there's a known table and id, try to resolve anyway
-        if (table && id > 0) {
-            return { table, id, do: doVal };
+        // Page
+        if (doV === 'page' && id > 0) {
+            return { table: 'tl_page', id };
         }
 
         return null;
     }
 
-    function contextChanged(a, b) {
-        if (a === null && b === null) return false;
-        if (a === null || b === null) return true;
-        return a.table !== b.table || a.id !== b.id;
+    function contextKey(ctx) {
+        return ctx ? ctx.table + ':' + ctx.id : 'null';
     }
 
     // -------------------------------------------------------------------------
@@ -222,22 +163,10 @@
     // -------------------------------------------------------------------------
 
     function observeNavigation() {
-        // Watch document title — Contao backend JS updates it on partial navigation
-        const titleEl = document.querySelector('head title');
-        if (titleEl) {
-            new MutationObserver(() => scheduleResolve()).observe(titleEl, { childList: true });
+        const title = document.querySelector('head title');
+        if (title) {
+            new MutationObserver(scheduleResolve).observe(title, { childList: true });
         }
-
-        // Watch the main content area for DOM replacement (AjaxRequest / turbo-like navigation)
-        const mainContent = document.getElementById('main') || document.querySelector('.main_headline');
-        if (mainContent) {
-            new MutationObserver(() => scheduleResolve()).observe(mainContent, {
-                childList: true,
-                subtree: false,
-            });
-        }
-
-        // Also listen for popstate (history navigation)
         window.addEventListener('popstate', scheduleResolve);
     }
 
@@ -247,109 +176,73 @@
     }
 
     // -------------------------------------------------------------------------
-    // AJAX resolve
+    // Resolve → iframe
     // -------------------------------------------------------------------------
 
-    function triggerResolve() {
+    async function triggerResolve() {
         const ctx = parseContext();
 
-        if (!contextChanged(ctx, currentContext)) {
-            return;
-        }
-
+        if (contextKey(ctx) === contextKey(currentContext)) return;
         currentContext = ctx;
 
-        if (ctx === null) {
-            showNoContext();
+        if (!ctx) {
+            clearFrame();
             return;
         }
 
-        resolvePreviewUrl(ctx);
+        if (!isOpen) return; // resolve later when user opens sidebar
+
+        await resolveAndShow(ctx);
     }
 
-    async function resolvePreviewUrl(ctx) {
-        showLoading(true);
-
-        const params = new URLSearchParams({
-            table: ctx.table,
-            id: String(ctx.id),
-        });
+    async function resolveAndShow(ctx) {
+        const params = new URLSearchParams({ table: ctx.table, id: String(ctx.id) });
 
         try {
-            const response = await fetch(RESOLVE_ENDPOINT + '?' + params.toString(), {
+            const res = await fetch(RESOLVE_ENDPOINT + '?' + params, {
                 headers: { 'X-Requested-With': 'XMLHttpRequest' },
                 credentials: 'same-origin',
             });
 
-            if (!response.ok) {
-                showNoContext();
-                return;
-            }
+            if (!res.ok) { clearFrame(); return; }
 
-            const data = await response.json();
+            const data = await res.json();
 
             if (data.previewUrl) {
-                currentPreviewUrl = data.previewUrl;
-                urlInput.value    = data.previewUrl;
-                openTabBtn.disabled  = false;
-                refreshBtn.disabled  = false;
-
-                if (isOpen) {
-                    setIframeSrc(data.previewUrl);
-                }
+                showUrl(data.previewUrl);
+                frame.src = data.previewUrl;
             } else {
-                showNoContext();
+                clearFrame();
             }
-        } catch (err) {
-            showNoContext();
-        } finally {
-            showLoading(false);
+        } catch {
+            clearFrame();
         }
     }
 
-    // -------------------------------------------------------------------------
-    // iframe management
-    // -------------------------------------------------------------------------
+    function showUrl(url) {
+        if (urlDisplay) urlDisplay.textContent = url;
+        const btn = document.getElementById('clp-open-tab');
+        if (btn) {
+            btn.onclick = () => window.open(url, '_blank', 'noopener');
+            btn.disabled = false;
+        }
+    }
 
-    function setIframeSrc(url) {
-        if (!url) return;
-
-        showNoContext(false);
-        loadingEl.hidden = false;
-        frame.hidden     = false;
-
-        frame.addEventListener('load', () => { loadingEl.hidden = true; }, { once: true });
-        frame.src = url;
+    function clearFrame() {
+        frame.src = '';
+        if (urlDisplay) urlDisplay.textContent = '';
+        const btn = document.getElementById('clp-open-tab');
+        if (btn) btn.disabled = true;
     }
 
     function reloadPreview() {
-        if (!currentPreviewUrl) return;
-
+        if (!frame.src) return;
         try {
             frame.contentWindow.location.reload();
-        } catch (_) {
-            // Cross-origin fallback: re-set src
-            setIframeSrc(currentPreviewUrl);
-        }
-    }
-
-    function showNoContext(show = true) {
-        noContextEl.hidden = !show;
-        frame.hidden       = show;
-        loadingEl.hidden   = true;
-
-        if (show) {
-            currentPreviewUrl   = '';
-            urlInput.value      = '';
-            openTabBtn.disabled = true;
-            refreshBtn.disabled = true;
-        }
-    }
-
-    function showLoading(show) {
-        loadingEl.hidden = !show;
-        if (show) {
-            noContextEl.hidden = true;
+        } catch {
+            const src = frame.src;
+            frame.src = '';
+            frame.src = src;
         }
     }
 
@@ -358,30 +251,16 @@
     // -------------------------------------------------------------------------
 
     function handleFormSubmit(e) {
-        const form = e.target;
-        if (!form || typeof form.querySelector !== 'function') return;
-        if (!form.querySelector('[name="FORM_SUBMIT"]')) return;
-
-        // Schedule a preview reload after the backend redirects back
-        // The MutationObserver on the title / main content will also fire,
-        // but we add a fallback timeout so the iframe reloads even if the
-        // Contao flash message doesn't appear (e.g. "Apply" button).
-        setTimeout(reloadPreview, SAVE_DELAY);
+        if (!e.target.querySelector?.('[name="FORM_SUBMIT"]')) return;
+        setTimeout(reloadPreview, 900);
     }
 
     function observeSaveFlash() {
-        // Contao renders success messages as .tl_confirm after save + redirect.
-        // We watch the body for such an element appearing.
         new MutationObserver((mutations) => {
-            for (const mutation of mutations) {
-                for (const node of mutation.addedNodes) {
+            for (const m of mutations) {
+                for (const node of m.addedNodes) {
                     if (node.nodeType !== 1) continue;
-                    if (
-                        node.classList.contains('tl_confirm') ||
-                        node.querySelector('.tl_confirm')
-                    ) {
-                        // Re-resolve context first (URL may have changed after save),
-                        // then reload after a short delay to let Contao finish rendering.
+                    if (node.classList?.contains('tl_confirm') || node.querySelector?.('.tl_confirm')) {
                         scheduleResolve();
                         setTimeout(reloadPreview, 400);
                         return;
@@ -396,26 +275,26 @@
     // -------------------------------------------------------------------------
 
     function bindResizer() {
-        let startX, startWidth;
+        if (!resizer) return;
+        let startX, startW;
 
         resizer.addEventListener('mousedown', (e) => {
-            startX     = e.clientX;
-            startWidth = parseInt(getComputedStyle(sidebar).width, 10);
-
-            document.addEventListener('mousemove', onMouseMove);
-            document.addEventListener('mouseup', onMouseUp, { once: true });
+            startX = e.clientX;
+            startW = sidebar.getBoundingClientRect().width;
+            document.addEventListener('mousemove', onMove);
+            document.addEventListener('mouseup', onUp, { once: true });
             e.preventDefault();
         });
 
-        function onMouseMove(e) {
-            // Resizer is on the left edge of the sidebar; dragging left = wider
-            const delta    = startX - e.clientX;
-            const newWidth = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, startWidth + delta));
-            setSidebarWidth(newWidth);
+        function onMove(e) {
+            const w = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, startW + (startX - e.clientX)));
+            sidebar.style.setProperty('--clp-width', w + 'px');
+            localStorage.setItem(LS_WIDTH_KEY, String(w));
         }
 
-        function onMouseUp() {
-            document.removeEventListener('mousemove', onMouseMove);
+        function onUp() {
+            document.removeEventListener('mousemove', onMove);
         }
     }
+
 })();

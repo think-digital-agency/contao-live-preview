@@ -85,6 +85,25 @@ class PreviewResolverController extends AbstractController
             return '';
         }
 
-        return $page->getAbsoluteUrl();
+        // Non-routable page types (error_404, error_403, folder, root) cannot be
+        // opened directly. Walk up to the nearest routable ancestor instead.
+        $routableTypes = ['regular', 'redirect', 'forward'];
+        $candidate = $page;
+
+        while (null !== $candidate && !\in_array($candidate->type, $routableTypes, true)) {
+            $candidate = $candidate->pid > 0
+                ? $pageAdapter->findWithDetails((int) $candidate->pid)
+                : null;
+        }
+
+        if (null === $candidate) {
+            return '';
+        }
+
+        try {
+            return $candidate->getAbsoluteUrl();
+        } catch (\Throwable) {
+            return '';
+        }
     }
 }

@@ -10,8 +10,12 @@ use Twig\Environment;
 /**
  * Injects the live preview sidebar into the Contao backend main template.
  *
- * Uses the outputBackendTemplate hook so injection is scoped to be_main only,
- * avoiding interference with popups (be_popup) or login pages (be_login).
+ * Strategy:
+ *   1. Render the <aside id="clp-right"> and place it right before </div> that
+ *      closes #container. We find this by looking for </main>\n......</div> which
+ *      is the reliable closing sequence in Contao's be_main template.
+ *   2. The JS then finds it already in-place inside #container (no DOM move needed).
+ *   3. CSS and JS tags go into <head> / before </body> as usual.
  */
 #[AsHook('outputBackendTemplate')]
 class InjectLivePreviewListener
@@ -35,8 +39,13 @@ class InjectLivePreviewListener
         // Inject CSS into <head>
         $buffer = str_replace('</head>', $cssTag."\n</head>", $buffer);
 
-        // Inject sidebar + JS before </body>
-        $buffer = str_replace('</body>', $sidebarHtml."\n".$jsTag."\n</body>", $buffer);
+        // Inject <aside> inside #container, right after </main>.
+        // Contao's be_main renders </main> followed (after whitespace) by </div> for #container.
+        // Inserting after </main> places the aside as the last flex child of #container.
+        $buffer = str_replace('</main>', '</main>'."\n".$sidebarHtml, $buffer);
+
+        // Inject JS before </body>
+        $buffer = str_replace('</body>', $jsTag."\n</body>", $buffer);
 
         return $buffer;
     }

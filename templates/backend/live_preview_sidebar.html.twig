@@ -1,96 +1,18 @@
-<div id="clp-sidebar" class="clp-sidebar clp-sidebar--collapsed" role="complementary" aria-label="Live Preview">
-    <div class="clp-sidebar__resizer" id="clp-resizer" title="Drag to resize"></div>
+<aside id="clp-right" role="complementary" aria-label="Live Preview">
+    <div id="clp-resizer" title="Breite ziehen"></div>
 
-    <div class="clp-sidebar__toolbar">
-        <span class="clp-sidebar__icon" aria-hidden="true">
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
-                <circle cx="12" cy="12" r="3"/>
-            </svg>
-        </span>
-        <span class="clp-sidebar__label">Live Preview</span>
-
-        <input
-            type="text"
-            id="clp-url-display"
-            class="clp-sidebar__url-input"
-            readonly
-            placeholder="Context wird erkannt…"
-            title="Vorschau-URL"
-        >
-
-        <button
-            type="button"
-            id="clp-open-tab"
-            class="clp-sidebar__btn clp-sidebar__btn--icon"
-            title="In neuem Tab öffnen"
-            disabled
-        >
-            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
-                <polyline points="15 3 21 3 21 9"/>
-                <line x1="10" y1="14" x2="21" y2="3"/>
-            </svg>
-        </button>
-
-        <button
-            type="button"
-            id="clp-refresh"
-            class="clp-sidebar__btn clp-sidebar__btn--icon"
-            title="Vorschau neu laden"
-            disabled
-        >
-            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <polyline points="23 4 23 10 17 10"/>
-                <polyline points="1 20 1 14 7 14"/>
-                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
-            </svg>
-        </button>
-
-        <button
-            type="button"
-            id="clp-toggle"
-            class="clp-sidebar__btn clp-sidebar__btn--toggle"
-            title="Vorschau einklappen"
-            aria-expanded="true"
-        >
-            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="clp-icon-chevron-right">
-                <polyline points="9 18 15 12 9 6"/>
-            </svg>
-        </button>
+    <div id="clp-toolbar">
+        <span id="clp-url-display" title="Vorschau-URL"></span>
+        <div id="clp-toolbar-actions">
+            <button type="button" id="clp-open-tab" title="In neuem Tab öffnen" disabled>
+                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                Neuer Tab
+            </button>
+        </div>
     </div>
 
-    <div class="clp-sidebar__body">
-        <div id="clp-loading" class="clp-sidebar__loading" hidden>
-            <span class="clp-sidebar__spinner"></span>
-            <span>Wird geladen…</span>
-        </div>
-        <div id="clp-no-context" class="clp-sidebar__placeholder">
-            <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
-                <circle cx="12" cy="12" r="3"/>
-            </svg>
-            <p>Keine Vorschau verfügbar.<br>Öffne eine Seite, einen Artikel oder ein Inhaltselement.</p>
-        </div>
-        <iframe
-            id="clp-frame"
-            class="clp-sidebar__iframe"
-            title="Frontend Vorschau"
-            hidden
-        ></iframe>
-    </div>
-</div>
-
-{# Floating toggle button — visible when sidebar is collapsed #}
-<button
-    type="button"
-    id="clp-floating-toggle"
-    class="clp-floating-toggle"
-    title="Live Preview öffnen"
-    aria-label="Live Preview öffnen"
->
-    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
-        <circle cx="12" cy="12" r="3"/>
-    </svg>
-</button>
+    <iframe
+        id="clp-frame"
+        title="Frontend Vorschau"
+    ></iframe>
+</aside>
