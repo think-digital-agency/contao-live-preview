@@ -2,31 +2,44 @@
  * Contao Live Preview – sidebar stylesheet
  *
  * Layout: #clp-right is a flex sibling of #main inside #container (display:flex).
- * It appears on the right and shrinks #main naturally via flexbox.
+ * Only #main shrinks — #left (nav) and #clp-right keep their fixed widths.
  *
- * Contao CSS variables used (from the flexible theme):
- *   --header-bg, --header-text, --border, --body-bg, --content-bg,
- *   --content-border, --form-border
+ * Contao CSS variables (flexible theme):
+ *   --header-bg, --header-bg-hover, --header-text
+ *   --border, --content-border, --body-bg, --panel-bg, --content-bg
+ *   --form-border, --border-radius
  */
 
 /* -------------------------------------------------------------------------
-   Sidebar – flex child of #container
+   Flex layout fixes when preview is open.
+   Contao sets #left { width: 220px } and #main { width: calc(100% - 220px) }.
+   We need #left to stay fixed and only #main to compress.
+   ------------------------------------------------------------------------- */
+body.clp-open #left {
+    flex-shrink: 0; /* left nav must not compress */
+}
+
+body.clp-open #main {
+    flex: 1 1 0%;
+    min-width: 0; /* allow compressing below content width */
+    width: auto !important; /* override Contao's calc(100% - 220px) */
+}
+
+/* -------------------------------------------------------------------------
+   Sidebar shell
    ------------------------------------------------------------------------- */
 #clp-right {
     --clp-width: 420px;
 
-    display: none; /* hidden by default; .clp-open on body shows it */
+    display: none;
+    flex: 0 0 var(--clp-width);   /* fixed width, won't grow or shrink */
+    width: var(--clp-width);       /* fallback for non-flex contexts */
     flex-direction: column;
-    flex-shrink: 0;
-    width: var(--clp-width);
 
-    /* Visually match the Contao backend panel style */
     background: var(--body-bg, #f6f6f8);
     border-left: 1px solid var(--content-border, #e0e0e2);
-
-    /* Sit at the top of #container, stretch to full height */
     align-self: stretch;
-    position: relative; /* for the resizer handle */
+    position: relative;
     overflow: hidden;
 }
 
@@ -34,56 +47,58 @@ body.clp-open #clp-right {
     display: flex;
 }
 
-/* On narrow screens sidebar overlays (position:fixed) to avoid squeezing #main */
+/* On narrow screens: overlay (position:fixed) to avoid crushing #main */
 @media (max-width: 1200px) {
+    body.clp-open #main {
+        width: auto !important;
+    }
     #clp-right {
         position: fixed;
         top: 40px; /* Contao header height */
         right: 0;
         bottom: 0;
         z-index: 100;
-        box-shadow: -4px 0 16px rgba(0,0,0,.2);
-        width: var(--clp-width);
-    }
-    body.clp-open #clp-right {
-        display: flex; /* already set above; repeated for clarity */
+        box-shadow: -4px 0 16px rgba(0, 0, 0, .2);
     }
 }
 
+/* Restore saved width from localStorage on first paint */
+#clp-right {
+    --clp-width: var(--clp-saved-width, 420px);
+}
+
 /* -------------------------------------------------------------------------
-   Resize handle
+   Resize handle – left edge of sidebar
    ------------------------------------------------------------------------- */
 #clp-resizer {
     position: absolute;
     top: 0;
     left: 0;
     bottom: 0;
-    width: 4px;
+    width: 5px;
     cursor: col-resize;
-    z-index: 1;
+    z-index: 2;
     background: transparent;
     transition: background .15s;
 }
 
 #clp-resizer:hover {
     background: var(--header-bg, #f47c00);
-    opacity: .5;
+    opacity: .4;
 }
 
 /* -------------------------------------------------------------------------
-   Toolbar – matches Contao's header/panel visual language
+   Toolbar
    ------------------------------------------------------------------------- */
 #clp-toolbar {
     display: flex;
     align-items: center;
     gap: 6px;
     padding: 0 10px;
-    height: 40px;
+    height: 36px;
     flex-shrink: 0;
-
     background: var(--panel-bg, #f3f3f5);
     border-bottom: 1px solid var(--border, #eaeaec);
-    color: inherit;
 }
 
 #clp-url-display {
@@ -91,51 +106,41 @@ body.clp-open #clp-right {
     min-width: 0;
     font-size: 11px;
     font-family: monospace;
-    color: var(--invert-bg, #333);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    opacity: .7;
+    opacity: .65;
 }
 
-#clp-toolbar-actions {
-    display: flex;
-    gap: 4px;
-    flex-shrink: 0;
-}
-
-#clp-toolbar button,
 #clp-open-tab {
     display: inline-flex;
     align-items: center;
-    justify-content: center;
-    padding: 4px 6px;
+    gap: 4px;
+    padding: 3px 8px;
     border: 1px solid var(--form-border, #bbb);
-    border-radius: 3px;
+    border-radius: var(--border-radius, 4px);
     background: var(--content-bg, #fff);
-    color: inherit;
     font-size: 11px;
     line-height: 1;
     cursor: pointer;
-    gap: 4px;
+    color: inherit;
     text-decoration: none;
     white-space: nowrap;
-    transition: background .15s, border-color .15s;
+    transition: background .15s;
+    flex-shrink: 0;
 }
 
-#clp-toolbar button:hover,
 #clp-open-tab:hover {
     background: var(--nav-bg-hover, #eaeaec);
 }
 
-#clp-open-tab[disabled],
-#clp-open-tab:disabled {
-    opacity: .4;
+#clp-open-tab[disabled] {
+    opacity: .35;
     pointer-events: none;
 }
 
 /* -------------------------------------------------------------------------
-   iframe fills the remaining height
+   iframe
    ------------------------------------------------------------------------- */
 #clp-frame {
     flex: 1;
@@ -146,46 +151,42 @@ body.clp-open #clp-right {
 }
 
 /* -------------------------------------------------------------------------
-   Toggle button injected into #tmenu (Contao header nav)
-   Styled to match the other tmenu <li> items.
+   Toggle button in #tmenu header
+   Must match: #tmenu a { padding: 13px 12px; font-size: .875rem; color: var(--header-text) }
+   and: #tmenu .color-scheme button, #tmenu .profile button { font-size: .875rem }
    ------------------------------------------------------------------------- */
 #clp-toggle-item {
     display: flex;
-    align-items: center;
+    align-items: stretch;
 }
 
 #clp-toggle-btn {
+    /* Match Contao's #tmenu a exactly */
     display: inline-flex;
     align-items: center;
-    gap: 5px;
-    padding: 0 8px;
-    height: 40px;
+    gap: 6px;
+    margin: 0;
+    padding: 13px 12px;
     border: none;
-    background: transparent;
+    background: none;
     color: var(--header-text, #fff);
-    font-size: 12px;
+    font-size: .875rem;
+    font-family: inherit;
+    font-weight: 300;
+    line-height: 1;
     cursor: pointer;
     white-space: nowrap;
-    opacity: .85;
-    transition: opacity .15s, background .15s;
-    line-height: 1;
+    transition: background-color .3s ease;
 }
 
-#clp-toggle-btn:hover {
-    background: var(--header-bg-hover, rgba(0,0,0,.15));
-    opacity: 1;
-}
-
+#clp-toggle-btn:hover,
 #clp-toggle-btn.active {
-    opacity: 1;
-    background: rgba(0,0,0,.2);
+    background-color: var(--header-bg-hover, rgba(0, 0, 0, .15));
 }
 
-#clp-toggle-btn svg {
-    flex-shrink: 0;
-}
-
-/* Hide the text label on very narrow screens */
-@media (max-width: 900px) {
-    #clp-toggle-btn span { display: none; }
+/* Hide label text on narrower screens (matches Contao's own responsive behaviour) */
+@media (max-width: 960px) {
+    #clp-toggle-btn span {
+        display: none;
+    }
 }
