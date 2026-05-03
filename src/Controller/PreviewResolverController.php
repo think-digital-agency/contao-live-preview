@@ -11,7 +11,7 @@ use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\Security\Http\Attribute\IsGranted;
-use Vendor\ContaoLivePreviewBundle\Service\PreviewUrlResolver;
+use Vendor\ContaoLivePreviewBundle\Service\PreviewUrlResolverInterface;
 
 #[Route(
     '/contao/live-preview/resolve',
@@ -23,13 +23,19 @@ use Vendor\ContaoLivePreviewBundle\Service\PreviewUrlResolver;
 class PreviewResolverController extends AbstractController
 {
     public function __construct(
-        private readonly PreviewUrlResolver $resolver,
+        private readonly PreviewUrlResolverInterface $resolver,
         private readonly ContaoFramework $framework,
     ) {
     }
 
     public function __invoke(Request $request): JsonResponse
     {
+        // Release session lock immediately so concurrent Turbo navigation requests
+        // are not blocked waiting for this AJAX call to finish.
+        if ($request->hasSession()) {
+            $request->getSession()->save();
+        }
+
         $table = $request->query->getString('table');
         $id    = $request->query->getInt('id');
 
@@ -50,10 +56,30 @@ class PreviewResolverController extends AbstractController
 
         $previewUrl = $this->buildPreviewUrl($pageData['pageId']);
 
+        $articleId    = $pageData['articleId'] ?? null;
+        $articleAlias = (string) ($pageData['articleAlias'] ?? '');
+        $articleCssId = (string) ($pageData['articleCssId'] ?? '');
+
+        // Ordered selector chain: JS tries each in sequence, uses the first match.
+        // 1. #article-{numericId}  — Contao's default when no CSS ID is set in backend
+        // 2. #article-{alias}      — when a custom article alias is set
+        // 3. #{cssId}              — when user has explicitly set a CSS ID in the backend
+        $selectors = [];
+        if (\is_int($articleId) && $articleId > 0) {
+            $selectors[] = '#article-' . $articleId;
+        }
+        if ('' !== $articleAlias && $articleAlias !== (string) $articleId) {
+            $selectors[] = '#article-' . $articleAlias;
+        }
+        if ('' !== $articleCssId) {
+            $selectors[] = '#' . $articleCssId;
+        }
+
         return $this->json([
-            'pageId'     => $pageData['pageId'],
-            'pageAlias'  => $pageData['alias'],
-            'previewUrl' => $previewUrl,
+            'pageId'             => $pageData['pageId'],
+            'pageAlias'          => $pageData['alias'],
+            'previewUrl'         => $previewUrl,
+            'highlightSelectors' => $selectors,
         ]);
     }
 

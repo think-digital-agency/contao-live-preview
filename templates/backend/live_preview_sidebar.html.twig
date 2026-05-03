@@ -2,13 +2,14 @@
 <script>
 (function(){
     var w = parseInt(localStorage.getItem('clp_sidebar_width') || '0', 10);
-    if (w >= 280 && w <= 800) {
+    var maxW = Math.floor(window.innerWidth * 0.8);
+    if (w >= 280 && w <= maxW) {
         document.documentElement.style.setProperty('--clp-saved-width', w + 'px');
     }
 })();
 </script>
 
-<aside id="clp-right" role="complementary" aria-label="Live Preview">
+<aside id="clp-right" role="complementary" aria-label="Live Preview" data-turbo-permanent>
     <div id="clp-resizer" title="Breite ziehen"></div>
 
     <div id="clp-toolbar">

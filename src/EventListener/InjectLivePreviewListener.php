@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Vendor\ContaoLivePreviewBundle\EventListener;
 
 use Contao\CoreBundle\DependencyInjection\Attribute\AsHook;
+use Symfony\Component\HttpFoundation\RequestStack;
 use Twig\Environment;
 
 /**
@@ -21,7 +22,8 @@ use Twig\Environment;
 class InjectLivePreviewListener
 {
     public function __construct(
-        private readonly Environment $twig,
+        private readonly Environment  $twig,
+        private readonly RequestStack $requestStack,
     ) {
     }
 
@@ -29,6 +31,17 @@ class InjectLivePreviewListener
     {
         if ('be_main' !== $template) {
             return $buffer;
+        }
+
+        // Never inject into popups, pickers, or any modal-style backend window.
+        // Contao signals these contexts via query parameters:
+        //   popup=1  → article properties, wizard dialogs, etc.
+        //   picker   → file picker, link picker, page picker, etc.
+        $request = $this->requestStack->getCurrentRequest();
+        if (null !== $request) {
+            if ($request->query->getBoolean('popup') || $request->query->has('picker')) {
+                return $buffer;
+            }
         }
 
         $sidebarHtml = $this->twig->render('@ContaoLivePreview/backend/live_preview_sidebar.html.twig');

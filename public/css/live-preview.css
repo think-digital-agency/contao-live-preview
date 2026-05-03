@@ -38,13 +38,19 @@ body.clp-open #main {
 
     background: var(--body-bg, #f6f6f8);
     border-left: 1px solid var(--content-border, #e0e0e2);
-    align-self: stretch;
     position: relative;
     overflow: hidden;
 }
 
 body.clp-open #clp-right {
     display: flex;
+    /* Stick below the Contao fixed header; fill the remaining viewport height.
+       align-self: flex-start is required — sticky does not work with stretch. */
+    position: sticky;
+    top: 40px; /* Contao header height */
+    align-self: flex-start;
+    height: calc(100vh - 40px);
+    max-height: calc(100vh - 40px);
 }
 
 /* On narrow screens: overlay (position:fixed) to avoid crushing #main */

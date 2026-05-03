@@ -5,9 +5,14 @@
  * <body> on every navigation, which means:
  *   - DOMContentLoaded fires only on the first hard load
  *   - turbo:render fires after EVERY navigation (body swap)
- *   - All DOM references must be re-acquired after each turbo:render
  *   - Global event listeners (on document/window) survive body swap and
  *     must NOT be re-added on every render
+ *
+ * #clp-right carries data-turbo-permanent so Turbo moves it (with its live
+ * iframe) to every new body — the preview never blanks during navigation.
+ *
+ * turbo:before-render pre-applies body.clp-open to the *incoming* body so
+ * the sidebar is never momentarily display:none during the swap.
  *
  * URL disambiguation (verified against real Contao 5.7 backend URLs):
  *   ?do=article&table=tl_content&act=edit&id=X  → id = content element
@@ -25,63 +30,82 @@
     const LS_WIDTH_KEY     = 'clp_sidebar_width';
     const DEFAULT_WIDTH    = 420;
     const MIN_WIDTH        = 280;
-    const MAX_WIDTH        = 800;
     const RESOLVE_DEBOUNCE = 250;
 
+    // Scroll position captured at form-submit time (before Turbo navigation may
+    // reset the iframe). Used by reloadPreview() after the save completes.
+    let savedScrollX = 0;
+    let savedScrollY = 0;
+
     // -------------------------------------------------------------------------
-    // Per-page DOM references (re-acquired after every turbo:render)
+    // DOM references — acquired once; survive Turbo nav via data-turbo-permanent
     // -------------------------------------------------------------------------
     let sidebar, frame, urlDisplay;
 
     // -------------------------------------------------------------------------
-    // Persistent state (survives turbo navigation)
+    // Persistent state
     // -------------------------------------------------------------------------
     let isOpen         = false;
     let currentContext = null;
     let resolveTimer   = null;
 
-    // Track whether global (document/window) listeners are already attached —
-    // these survive turbo:render so we only add them once.
-    let globalListenersBound = false;
+    // true only when the iframe already shows the correct URL and a content
+    // reload is needed (same-URL save). false when frame.src was just updated
+    // (fresh navigation in progress — reloadPreview must not interrupt it).
+    let frameNeedsReload = false;
 
-    // Observer instances that must be re-created after body swap
-    let saveFlashObserver = null;
+    // Ordered list of CSS selectors to try for scroll+highlight after each load.
+    // JS picks the first one that matches a DOM element.
+    // Empty array when context is tl_page (no article to highlight).
+    let highlightSelectors = [];
+
+    let globalListenersBound = false;
+    let saveFlashObserver    = null;
 
     // -------------------------------------------------------------------------
     // Entry points
     // -------------------------------------------------------------------------
 
-    // DOMContentLoaded: fires once on hard load
     document.addEventListener('DOMContentLoaded', onPageReady);
-
-    // turbo:render: fires after every Turbo body swap (navigation)
-    // This fires AFTER the new body is in the DOM, so DOM refs are safe here.
     document.addEventListener('turbo:render', onPageReady);
 
     function onPageReady() {
-        sidebar    = document.getElementById('clp-right');
-        frame      = document.getElementById('clp-frame');
-        urlDisplay = document.getElementById('clp-url-display');
+        // #clp-right is permanent — acquire refs only on the very first call.
+        if (!sidebar)    sidebar    = document.getElementById('clp-right');
+        if (!frame)      frame      = document.getElementById('clp-frame');
+        if (!urlDisplay) urlDisplay = document.getElementById('clp-url-display');
 
         if (!sidebar || !frame) return;
 
-        // Restore open state from localStorage — applies clp-open to the new body
+        // Sync isOpen from localStorage and stamp the current body.
+        // turbo:before-render already stamped the incoming body, so this is a
+        // no-op in the normal navigation case but handles hard reload correctly.
         const saved = localStorage.getItem(LS_OPEN_KEY);
         isOpen = saved !== null ? saved === '1' : window.innerWidth >= 1400;
-        applyState(false); // false = don't re-resolve, we'll do that below
+        document.body.classList.toggle('clp-open', isOpen);
 
+        // #tmenu is in the replaced body — re-inject the toggle button every nav.
         injectToggleButton();
-        bindResizer();
 
         if (!globalListenersBound) {
             globalListenersBound = true;
+
+            // Pre-apply clp-open to the *incoming* body before Turbo swaps it in.
+            // Without this, body.clp-open is absent for one paint → sidebar flash.
+            document.addEventListener('turbo:before-render', (e) => {
+                e.detail.newBody.classList.toggle('clp-open', isOpen);
+            });
+
             document.addEventListener('submit', handleFormSubmit);
+
+            // Resizer lives inside the permanent sidebar — bind event listeners once.
+            bindResizer();
         }
 
-        // Re-attach body-level observer (body was replaced)
+        // document.body is replaced on every nav; observer must follow it.
         observeSaveFlash();
 
-        // Reset context so the new URL gets resolved (context from prev page is stale)
+        // Context from the previous page is stale — resolve for the new URL.
         currentContext = null;
         triggerResolve();
     }
@@ -91,7 +115,6 @@
     // -------------------------------------------------------------------------
 
     function injectToggleButton() {
-        // Remove any leftover from previous render
         const existing = document.getElementById('clp-toggle-item');
         if (existing) existing.remove();
 
@@ -114,11 +137,9 @@
 
         li.appendChild(btn);
 
-        // Insert before the burger menu item
         const burger = tmenu.querySelector('li.burger');
         burger ? tmenu.insertBefore(li, burger) : tmenu.appendChild(li);
 
-        // Reflect current state on the fresh button
         btn.classList.toggle('active', isOpen);
     }
 
@@ -133,7 +154,9 @@
         const btn = document.getElementById('clp-toggle-btn');
         if (btn) btn.classList.toggle('active', isOpen);
 
-        if (andResolve && isOpen && currentContext && !frame.src) {
+        // When opening, always resolve — the iframe may show a stale page if the
+        // user navigated while the sidebar was closed.
+        if (andResolve && isOpen && currentContext) {
             resolveAndShow(currentContext);
         }
     }
@@ -156,22 +179,18 @@
 
         if (id <= 0) return null;
 
-        // Content element only when act=edit + table=tl_content
         if (tbl === 'tl_content' && act === 'edit') {
             return { table: 'tl_content', id };
         }
 
-        // Content list view: table=tl_content, no act → id is the ARTICLE
         if (doV === 'article' && tbl === 'tl_content' && !act) {
             return { table: 'tl_article', id };
         }
 
-        // Article (direct edit, or table=tl_article)
         if (doV === 'article' && id > 0) {
             return { table: 'tl_article', id };
         }
 
-        // Page
         if (doV === 'page' && id > 0) {
             return { table: 'tl_page', id };
         }
@@ -199,6 +218,39 @@
         }, RESOLVE_DEBOUNCE);
     }
 
+    // Returns the iframe's current canonical URL with internal params stripped.
+    // Used to compare against the resolved preview URL without false positives.
+    function getCleanSrc() {
+        if (!frame || !frame.src) return '';
+        try {
+            const u = new URL(frame.src);
+            u.searchParams.delete('_r');
+            u.searchParams.delete('_clp');
+            return u.toString();
+        } catch {
+            return frame.src;
+        }
+    }
+
+    // Appends ?_clp=1 to a URL so InjectPreviewScriptListener injects the
+    // postMessage listener into the frontend page response.
+    function addClpParam(url) {
+        try {
+            const u = new URL(url);
+            u.searchParams.set('_clp', '1');
+            return u.toString();
+        } catch {
+            return url;
+        }
+    }
+
+    function sendHighlight() {
+        if (!highlightSelectors.length || !frame?.contentWindow) return;
+        try {
+            frame.contentWindow.postMessage({ type: 'clp:highlight', selectors: highlightSelectors }, '*');
+        } catch { }
+    }
+
     async function resolveAndShow(ctx) {
         const params = new URLSearchParams({ table: ctx.table, id: String(ctx.id) });
 
@@ -207,45 +259,78 @@
                 headers: { 'X-Requested-With': 'XMLHttpRequest' },
                 credentials: 'same-origin',
             });
-            if (!res.ok) { clearFrame(); return; }
+            if (!res.ok) return;
 
             const data = await res.json();
 
             if (data.previewUrl) {
+                highlightSelectors = data.highlightSelectors || [];
+
                 if (urlDisplay) urlDisplay.textContent = data.previewUrl;
                 const openBtn = document.getElementById('clp-open-tab');
                 if (openBtn) {
                     openBtn.disabled = false;
                     openBtn.onclick = () => window.open(data.previewUrl, '_blank', 'noopener');
                 }
-                // Only update iframe if URL actually changed
-                if (frame.src !== data.previewUrl) {
-                    frame.src = data.previewUrl;
+
+                if (getCleanSrc() !== data.previewUrl) {
+                    // URL changed → navigate to new page; reloadPreview must not interrupt.
+                    frame.src = addClpParam(data.previewUrl);
+                    frameNeedsReload = false;
+                    frame.addEventListener('load', sendHighlight, { once: true });
+                } else {
+                    // Same URL — content may be stale after a save; allow reloadPreview.
+                    // Page is already loaded, so send highlight immediately.
+                    frameNeedsReload = true;
+                    sendHighlight();
                 }
-            } else {
-                clearFrame();
             }
         } catch {
-            clearFrame();
+            // Network/parse error — keep existing iframe content.
         }
     }
 
     function clearFrame() {
         if (frame) frame.src = '';
+        frameNeedsReload = false;
         if (urlDisplay) urlDisplay.textContent = '';
         const openBtn = document.getElementById('clp-open-tab');
         if (openBtn) openBtn.disabled = true;
     }
 
     function reloadPreview() {
-        if (!frame || !frame.src) return;
-        try {
-            frame.contentWindow.location.reload();
-        } catch {
-            const src = frame.src;
-            frame.src = '';
-            frame.src = src;
-        }
+        const cleanSrc = getCleanSrc();
+        if (!cleanSrc || !frameNeedsReload) return;
+        frameNeedsReload = false;
+
+        // Consume the scroll position saved at form-submit time. Reading it here
+        // (after Turbo navigation) is too late — the DOM move of the permanent
+        // sidebar element may have caused the iframe to reload, resetting scrollY.
+        const scrollX = savedScrollX;
+        const scrollY = savedScrollY;
+        savedScrollX = savedScrollY = 0;
+
+        // Cache-buster forces a real HTTP request, bypassing the browser's
+        // bfcache and any Contao page cache. _clp=1 ensures InjectPreviewScriptListener
+        // re-injects the postMessage listener into the reloaded page.
+        const u = new URL(cleanSrc);
+        u.searchParams.set('_r', String(Date.now()));
+        u.searchParams.set('_clp', '1');
+        frame.src = u.toString();
+
+        // Restore scroll and re-highlight after the reload completes.
+        // behavior:'instant' overrides css scroll-behavior:smooth on the frontend.
+        // requestAnimationFrame lets the layout stabilise before scrolling.
+        frame.addEventListener('load', () => {
+            if (scrollX || scrollY) {
+                requestAnimationFrame(() => {
+                    try {
+                        frame.contentWindow.scrollTo({ top: scrollY, left: scrollX, behavior: 'instant' });
+                    } catch { }
+                });
+            }
+            sendHighlight();
+        }, { once: true });
     }
 
     // -------------------------------------------------------------------------
@@ -254,7 +339,11 @@
 
     function handleFormSubmit(e) {
         if (!e.target.querySelector?.('[name="FORM_SUBMIT"]')) return;
-        // Context stays the same after save, just reload the preview
+        // Capture scroll NOW — before Turbo navigation resets the iframe.
+        try {
+            savedScrollX = frame?.contentWindow?.scrollX || 0;
+            savedScrollY = frame?.contentWindow?.scrollY || 0;
+        } catch { savedScrollX = savedScrollY = 0; }
         setTimeout(reloadPreview, 900);
     }
 
@@ -266,7 +355,6 @@
                 for (const node of m.addedNodes) {
                     if (node.nodeType !== 1) continue;
                     if (node.classList?.contains('tl_confirm') || node.querySelector?.('.tl_confirm')) {
-                        currentContext = null; // force re-resolve after redirect
                         setTimeout(reloadPreview, 400);
                         return;
                     }
@@ -278,7 +366,9 @@
     }
 
     // -------------------------------------------------------------------------
-    // Resize handle
+    // Resize handle — Pointer Events API with setPointerCapture so that
+    // pointermove/pointerup are received even when the cursor leaves the window.
+    // Bound once because the resizer lives in the permanent sidebar element.
     // -------------------------------------------------------------------------
 
     function bindResizer() {
@@ -287,42 +377,49 @@
 
         let startX = 0, startW = 0;
 
-        el.addEventListener('mousedown', (e) => {
-            // Read current width from CSS variable (more reliable than bounding rect
-            // which can differ from flex-basis in edge cases)
+        el.addEventListener('pointerdown', (e) => {
+            if (e.button !== 0) return; // left button only
+
             const cssVal = sidebar.style.getPropertyValue('--clp-width')
                         || getComputedStyle(sidebar).getPropertyValue('--clp-width')
                         || String(DEFAULT_WIDTH);
             startW = parseInt(cssVal, 10) || DEFAULT_WIDTH;
             startX = e.clientX;
 
-            document.addEventListener('mousemove', onMove);
-            document.addEventListener('mouseup', onUp, { once: true });
-            document.body.style.userSelect = 'none';
+            // Capture routes all subsequent pointer events to this element,
+            // even when the cursor moves outside the browser window.
+            el.setPointerCapture(e.pointerId);
+            document.documentElement.style.userSelect = 'none';
             e.preventDefault();
         });
 
-        function onMove(e) {
-            // Resizer is on the LEFT edge of the right sidebar.
-            // Dragging LEFT (smaller clientX) = wider sidebar.
+        el.addEventListener('pointermove', (e) => {
+            if (!el.hasPointerCapture(e.pointerId)) return; // not dragging
+
+            // Resizer is on the LEFT edge; dragging left = wider sidebar.
+            // Max is 80 vw so the backend content area always stays usable.
+            const maxW = Math.floor(window.innerWidth * 0.8);
             const delta = startX - e.clientX;
-            const w = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, startW + delta));
+            const w = Math.min(maxW, Math.max(MIN_WIDTH, startW + delta));
             sidebar.style.setProperty('--clp-width', w + 'px');
             localStorage.setItem(LS_WIDTH_KEY, String(w));
-        }
+        });
 
-        function onUp() {
-            document.removeEventListener('mousemove', onMove);
-            document.body.style.userSelect = '';
+        el.addEventListener('pointerup', endDrag);
+        el.addEventListener('pointercancel', endDrag);
+
+        function endDrag(e) {
+            el.releasePointerCapture(e.pointerId);
+            document.documentElement.style.userSelect = '';
         }
     }
 
-    // Restore saved width (called once via CSS, but also here for JS-side width tracking)
+    // Pre-paint width restore — also done inline in the template for the very
+    // first paint; this covers deferred-script timing.
     (function restoreWidth() {
         const w = parseInt(localStorage.getItem(LS_WIDTH_KEY) || '0', 10);
-        if (w >= MIN_WIDTH && w <= MAX_WIDTH) {
-            // Will be picked up by onPageReady → bindResizer's first call
-            // We pre-set it here so it's available before the sidebar element exists
+        const maxW = Math.floor(window.innerWidth * 0.8);
+        if (w >= MIN_WIDTH && w <= maxW) {
             document.documentElement.style.setProperty('--clp-saved-width', w + 'px');
         }
     })();

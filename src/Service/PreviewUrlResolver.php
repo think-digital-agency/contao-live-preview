@@ -6,7 +6,7 @@ namespace Vendor\ContaoLivePreviewBundle\Service;
 
 use Doctrine\DBAL\Connection;
 
-class PreviewUrlResolver
+class PreviewUrlResolver implements PreviewUrlResolverInterface
 {
     public function __construct(
         private readonly Connection $connection,
@@ -45,7 +45,7 @@ class PreviewUrlResolver
     private function resolveFromArticle(int $id): ?array
     {
         $row = $this->connection->fetchAssociative(
-            'SELECT pid FROM tl_article WHERE id = ?',
+            'SELECT pid, alias, cssID FROM tl_article WHERE id = ?',
             [$id],
         );
 
@@ -53,7 +53,20 @@ class PreviewUrlResolver
             return null;
         }
 
-        return $this->resolveFromPage((int) $row['pid']);
+        $result = $this->resolveFromPage((int) $row['pid']);
+
+        if (null !== $result) {
+            $result['articleId']    = $id;
+            $result['articleAlias'] = (string) ($row['alias'] ?? '');
+
+            // cssID is stored as a:2:{i:0;s:N:"id";i:1;s:N:"class";}
+            $cssIdData = @unserialize((string) ($row['cssID'] ?? ''));
+            $result['articleCssId'] = \is_array($cssIdData) && '' !== ($cssIdData[0] ?? '')
+                ? (string) $cssIdData[0]
+                : '';
+        }
+
+        return $result;
     }
 
     private function resolveFromPage(int $id): ?array
@@ -68,10 +81,13 @@ class PreviewUrlResolver
         }
 
         return [
-            'pageId'   => (int) $row['id'],
-            'alias'    => (string) $row['alias'],
-            'language' => (string) $row['language'],
-            'dns'      => (string) $row['dns'],
+            'pageId'       => (int) $row['id'],
+            'alias'        => (string) $row['alias'],
+            'language'     => (string) $row['language'],
+            'dns'          => (string) $row['dns'],
+            'articleId'    => null, // overwritten by resolveFromArticle
+            'articleAlias' => '',   // overwritten by resolveFromArticle
+            'articleCssId' => '',   // overwritten by resolveFromArticle
         ];
     }
 }
