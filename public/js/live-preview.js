@@ -36,6 +36,8 @@
     const LS_OPEN_KEY      = 'clp_sidebar_open';
     const LS_WIDTH_KEY     = 'clp_sidebar_width';
     const LS_SAVE_KEY      = 'clp_pending_save';
+    const LS_VW_KEY        = 'clp_vw';
+    const LS_ZOOM_KEY      = 'clp_zoom';
     const DEFAULT_WIDTH    = 420;
     const MIN_WIDTH        = 280;
     const RESOLVE_DEBOUNCE = 250;
@@ -44,7 +46,7 @@
     // -------------------------------------------------------------------------
     // DOM references — acquired once; survive Turbo nav via data-turbo-permanent
     // -------------------------------------------------------------------------
-    let sidebar, frame, urlDisplay;
+    let sidebar, frame, frameWrap, urlDisplay, vwInput, vhInput, zoomSelect;
 
     // -------------------------------------------------------------------------
     // Persistent state
@@ -66,7 +68,8 @@
     // Numeric article ID resolved for the current context. Used to target the
     // correct DOM node for partial refresh without a full iframe reload.
     // null when context is tl_page (no article).
-    let currentArticleId = null;
+    let currentArticleId    = null;
+    let currentArticleTitle = null;
 
     // 'smooth' for article context (user navigated to a different article — animate the scroll).
     // 'instant' for content-element context and after saves (position barely changes — no animation).
@@ -90,7 +93,11 @@
         // #clp-right is permanent — acquire refs only on the very first call.
         if (!sidebar)    sidebar    = document.getElementById('clp-right');
         if (!frame)      frame      = document.getElementById('clp-frame');
+        if (!frameWrap)  frameWrap  = document.getElementById('clp-frame-wrap');
         if (!urlDisplay) urlDisplay = document.getElementById('clp-url-display');
+        if (!vwInput)    vwInput    = document.getElementById('clp-vw');
+        if (!vhInput)    vhInput    = document.getElementById('clp-vh');
+        if (!zoomSelect) zoomSelect = document.getElementById('clp-zoom');
 
         if (!sidebar || !frame) return;
 
@@ -132,6 +139,7 @@
 
             // Resizer lives inside the permanent sidebar — bind event listeners once.
             bindResizer();
+            initViewportControls();
         }
 
         // Context from the previous page is stale — resolve for the new URL.
@@ -277,7 +285,12 @@
         // When called as a load event listener, behavior is an Event object — ignore it.
         const b = (behavior === 'instant' || behavior === 'smooth') ? behavior : scrollBehavior;
         try {
-            frame.contentWindow.postMessage({ type: 'clp:highlight', selectors: highlightSelectors, scrollBehavior: b }, '*');
+            frame.contentWindow.postMessage({
+                type:           'clp:highlight',
+                selectors:      highlightSelectors,
+                scrollBehavior: b,
+                label:          currentArticleTitle || '',
+            }, '*');
         } catch { }
     }
 
@@ -294,13 +307,14 @@
             const data = await res.json();
 
             if (data.previewUrl) {
-                highlightSelectors = data.highlightSelectors || [];
-                currentArticleId   = data.articleId || null;
+                highlightSelectors  = data.highlightSelectors || [];
+                currentArticleId    = data.articleId    || null;
+                currentArticleTitle = data.articleTitle || null;
                 // Smooth scroll when navigating to a different article; instant when
                 // switching between content elements (position barely changes).
                 scrollBehavior = ctx.table === 'tl_content' ? 'instant' : 'smooth';
 
-                if (urlDisplay) urlDisplay.textContent = data.previewUrl;
+                if (urlDisplay) urlDisplay.value = data.previewUrl;
                 const openBtn = document.getElementById('clp-open-tab');
                 if (openBtn) {
                     openBtn.disabled = false;
@@ -334,7 +348,7 @@
     function clearFrame() {
         if (frame) frame.src = '';
         frameNeedsReload = false;
-        if (urlDisplay) urlDisplay.textContent = '';
+        if (urlDisplay) urlDisplay.value = '';
         const openBtn = document.getElementById('clp-open-tab');
         if (openBtn) openBtn.disabled = true;
     }
@@ -362,6 +376,7 @@
                 type:      'clp:refresh',
                 articleId: currentArticleId,
                 selectors: highlightSelectors,
+                label:     currentArticleTitle || '',
             }, '*');
         } catch { }
     }
@@ -391,6 +406,7 @@
         try {
             localStorage.setItem(LS_SAVE_KEY, JSON.stringify({
                 articleId: currentArticleId,
+                label:     currentArticleTitle || '',
                 iframeUrl: getCleanSrc(),
                 selectors: highlightSelectors,
                 scrollX,
@@ -423,8 +439,9 @@
             // (e.g. Contao redirect chain after "Save and Close") don't re-trigger.
             // clp:refreshed will call removeItem again — that's a harmless no-op.
             localStorage.removeItem(LS_SAVE_KEY);
-            if (state.articleId)         currentArticleId   = state.articleId;
-            if (state.selectors?.length) highlightSelectors = state.selectors;
+            if (state.articleId)         currentArticleId    = state.articleId;
+            if (state.label !== undefined) currentArticleTitle = state.label || null;
+            if (state.selectors?.length) highlightSelectors  = state.selectors;
             frameNeedsReload = true;
             scheduleRefresh(250);
             return;
@@ -435,8 +452,9 @@
 
         if (!state.iframeUrl) return;
 
-        currentArticleId   = state.articleId  || null;
-        highlightSelectors = state.selectors  || [];
+        currentArticleId    = state.articleId || null;
+        currentArticleTitle = state.label     || null;
+        highlightSelectors  = state.selectors || [];
         frameNeedsReload   = false; // will be set true on load
 
         frame.src = addClpParam(state.iframeUrl);
@@ -464,6 +482,73 @@
         // Write state to localStorage. The refresh is driven entirely from
         // tryRehydrate() on the next onPageReady — no timer needed here.
         savePendingState();
+    }
+
+    // -------------------------------------------------------------------------
+    // Viewport controls — width input, height display, zoom select
+    // Bound once (sidebar is data-turbo-permanent).
+    // -------------------------------------------------------------------------
+
+    function applyViewport() {
+        if (!frame) return;
+
+        const vw   = vwInput   ? parseInt(vwInput.value   || '0', 10) : 0;
+        const zoom = zoomSelect ? parseFloat(zoomSelect.value || '1')  : 1;
+
+        if (vw >= 320) {
+            frame.style.width    = vw + 'px';
+            frame.style.maxWidth = 'none';
+        } else {
+            frame.style.width    = '100%';
+            frame.style.maxWidth = '';
+        }
+
+        frame.style.transform       = zoom !== 1 ? 'scale(' + zoom + ')' : '';
+        frame.style.transformOrigin = 'top left';
+
+        if (vhInput && frameWrap) {
+            vhInput.value = Math.round(frameWrap.offsetHeight);
+        }
+    }
+
+    function initViewportControls() {
+        // Restore persisted values.
+        const savedVw   = parseInt(localStorage.getItem(LS_VW_KEY) || '0', 10);
+        const savedZoom = localStorage.getItem(LS_ZOOM_KEY) || '1';
+
+        if (savedVw >= 320 && vwInput) vwInput.value = savedVw;
+        if (zoomSelect) zoomSelect.value = savedZoom;
+
+        applyViewport();
+
+        if (vwInput) {
+            vwInput.addEventListener('change', () => {
+                const v = parseInt(vwInput.value || '0', 10);
+                if (v >= 320) {
+                    localStorage.setItem(LS_VW_KEY, String(v));
+                } else {
+                    vwInput.value = '';
+                    localStorage.removeItem(LS_VW_KEY);
+                }
+                applyViewport();
+            });
+            // Submit on Enter
+            vwInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') vwInput.blur(); });
+        }
+
+        if (zoomSelect) {
+            zoomSelect.addEventListener('change', () => {
+                localStorage.setItem(LS_ZOOM_KEY, zoomSelect.value);
+                applyViewport();
+            });
+        }
+
+        // Keep vhInput in sync whenever the wrapper changes height (resize drag etc.)
+        if (frameWrap && vhInput) {
+            new ResizeObserver(() => {
+                vhInput.value = Math.round(frameWrap.offsetHeight);
+            }).observe(frameWrap);
+        }
     }
 
     // -------------------------------------------------------------------------

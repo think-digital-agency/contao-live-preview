@@ -13,16 +13,33 @@
     <div id="clp-resizer" title="Breite ziehen"></div>
 
     <div id="clp-toolbar">
-        <span id="clp-url-display"></span>
-        <button type="button" id="clp-open-tab" disabled>
-            <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
-                <polyline points="15 3 21 3 21 9"/>
-                <line x1="10" y1="14" x2="21" y2="3"/>
-            </svg>
-            Neuer Tab
-        </button>
+        <div id="clp-viewport-row">
+            <span class="clp-dim-label">W</span>
+            <input type="number" id="clp-vw" class="clp-dim-input" min="320" max="3840" step="1" placeholder="—">
+            <span class="clp-dim-sep">×</span>
+            <span class="clp-dim-label">H</span>
+            <input type="number" id="clp-vh" class="clp-dim-input" disabled tabindex="-1" placeholder="—">
+            <select id="clp-zoom" title="Zoom">
+                <option value="0.5">50%</option>
+                <option value="0.75">75%</option>
+                <option value="1" selected>100%</option>
+                <option value="1.25">125%</option>
+                <option value="1.5">150%</option>
+            </select>
+        </div>
+        <div id="clp-url-row">
+            <input type="text" id="clp-url-display" readonly tabindex="-1" placeholder="—">
+            <button type="button" id="clp-open-tab" disabled title="In neuem Tab öffnen">
+                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+                    <polyline points="15 3 21 3 21 9"/>
+                    <line x1="10" y1="14" x2="21" y2="3"/>
+                </svg>
+            </button>
+        </div>
     </div>
 
-    <iframe id="clp-frame" title="Frontend Vorschau"></iframe>
+    <div id="clp-frame-wrap">
+        <iframe id="clp-frame" title="Frontend Vorschau"></iframe>
+    </div>
 </aside>

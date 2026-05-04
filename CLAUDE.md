@@ -25,6 +25,7 @@
 | Resize | Pointer Events + `setPointerCapture` | Receives `pointermove`/`pointerup` even when cursor leaves the browser window |
 | Extensibility | `PreviewUrlResolverInterface` | Third-party bundles alias the interface to add support for news, events, custom models |
 | Highlight injection | `?_clp=1` + `KernelEvents::RESPONSE` listener | Frontend script injected ephemerally into the response — zero impact on normal page output |
+| Selection indicator | Persistent blue outline + floating title badge | Framer-style: `outline: 2px solid #2563eb` on `.clp-sel`, `position: absolute` badge pinned to body at article's top-left; cleared on next highlight |
 
 ---
 
@@ -124,8 +125,8 @@ For other themes, add these attributes to the article wrapper in `mod_article.ht
 
 | Type | Direction | Payload | Purpose |
 |---|---|---|---|
-| `clp:highlight` | backend → frontend | `{ selectors, scrollBehavior }` | Scroll to element + flash orange outline |
-| `clp:refresh` | backend → frontend | `{ articleId, selectors }` | Fetch page, swap article DOM node, then highlight |
+| `clp:highlight` | backend → frontend | `{ selectors, scrollBehavior, label }` | Scroll to element, apply persistent blue outline + article title badge |
+| `clp:refresh` | backend → frontend | `{ articleId, selectors, label }` | Fetch page, swap article DOM node, then highlight |
 | `clp:refreshed` | frontend → backend | `{ articleId }` | Acknowledgement after DOM swap completes |
 
 ---

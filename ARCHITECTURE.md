@@ -115,4 +115,6 @@ The partial refresh mechanism requires article wrappers in the frontend to carry
 |---|---|---|
 | `clp_sidebar_open` | `'0'` / `'1'` | Persist open/closed state across sessions |
 | `clp_sidebar_width` | integer (px) | Persist drag-resized sidebar width |
-| `clp_pending_save` | JSON object | Transient: save state before backend form submit; consumed by `tryRehydrate()` on next page init. Expires after 30 s. Cleared by `clp:refreshed` message. |
+| `clp_vw` | integer (px) | Persist custom iframe viewport width (blank = 100%) |
+| `clp_zoom` | float string (`'0.5'`–`'1.5'`) | Persist zoom level applied via `transform: scale()` |
+| `clp_pending_save` | JSON `{ articleId, label, iframeUrl, selectors, scrollX, scrollY, ts }` | Transient: save state before backend form submit; consumed by `tryRehydrate()` on next page init. Expires after 30 s. Cleared by `clp:refreshed` message. |
