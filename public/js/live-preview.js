@@ -32,11 +32,6 @@
     const MIN_WIDTH        = 280;
     const RESOLVE_DEBOUNCE = 250;
 
-    // Scroll position captured at form-submit time (before Turbo navigation may
-    // reset the iframe). Used by reloadPreview() after the save completes.
-    let savedScrollX = 0;
-    let savedScrollY = 0;
-
     // -------------------------------------------------------------------------
     // DOM references — acquired once; survive Turbo nav via data-turbo-permanent
     // -------------------------------------------------------------------------
@@ -49,9 +44,9 @@
     let currentContext = null;
     let resolveTimer   = null;
 
-    // true only when the iframe already shows the correct URL and a content
-    // reload is needed (same-URL save). false when frame.src was just updated
-    // (fresh navigation in progress — reloadPreview must not interrupt it).
+    // true only when the iframe already shows the correct URL and a partial
+    // refresh is needed (same-URL save). false when frame.src was just updated
+    // (fresh navigation in progress — refreshPreview must not interrupt it).
     let frameNeedsReload = false;
 
     // Ordered list of CSS selectors to try for scroll+highlight after each load.
@@ -233,7 +228,6 @@
         if (!frame || !frame.src) return '';
         try {
             const u = new URL(frame.src);
-            u.searchParams.delete('_r');
             u.searchParams.delete('_clp');
             return u.toString();
         } catch {
@@ -289,12 +283,16 @@
                 }
 
                 if (getCleanSrc() !== data.previewUrl) {
-                    // URL changed → navigate to new page; reloadPreview must not interrupt.
+                    // URL changed → navigate to new page; refreshPreview must not interrupt.
                     frame.src = addClpParam(data.previewUrl);
                     frameNeedsReload = false;
-                    frame.addEventListener('load', sendHighlight, { once: true });
+                    frame.addEventListener('load', () => {
+                        // Page is now loaded — subsequent saves can trigger a partial refresh.
+                        frameNeedsReload = true;
+                        sendHighlight();
+                    }, { once: true });
                 } else {
-                    // Same URL — content may be stale after a save; allow reloadPreview.
+                    // Same URL — content may be stale after a save; allow refreshPreview.
                     // Page is already loaded, so send highlight immediately.
                     frameNeedsReload = true;
                     sendHighlight();
@@ -313,39 +311,22 @@
         if (openBtn) openBtn.disabled = true;
     }
 
-    function reloadPreview() {
-        const cleanSrc = getCleanSrc();
-        if (!cleanSrc || !frameNeedsReload) return;
+    function refreshPreview() {
+        if (!frameNeedsReload || !currentArticleId) return;
         frameNeedsReload = false;
 
-        // Consume the scroll position saved at form-submit time. Reading it here
-        // (after Turbo navigation) is too late — the DOM move of the permanent
-        // sidebar element may have caused the iframe to reload, resetting scrollY.
-        const scrollX = savedScrollX;
-        const scrollY = savedScrollY;
-        savedScrollX = savedScrollY = 0;
-
-        // Cache-buster forces a real HTTP request, bypassing the browser's
-        // bfcache and any Contao page cache. _clp=1 ensures InjectPreviewScriptListener
-        // re-injects the postMessage listener into the reloaded page.
-        const u = new URL(cleanSrc);
-        u.searchParams.set('_r', String(Date.now()));
-        u.searchParams.set('_clp', '1');
-        frame.src = u.toString();
-
-        // Restore scroll and re-highlight after the reload completes.
-        // behavior:'instant' overrides css scroll-behavior:smooth on the frontend.
-        // requestAnimationFrame lets the layout stabilise before scrolling.
-        frame.addEventListener('load', () => {
-            if (scrollX || scrollY) {
-                requestAnimationFrame(() => {
-                    try {
-                        frame.contentWindow.scrollTo({ top: scrollY, left: scrollX, behavior: 'instant' });
-                    } catch { }
-                });
-            }
-            sendHighlight('instant'); // after a save: jump, don't animate
-        }, { once: true });
+        // Send clp:refresh to the iframe. The injected frontend script will:
+        //   1. fetch(window.location.href) — same-origin, no CORS
+        //   2. DOMParser extracts the article node from the response
+        //   3. Replaces the live DOM node (scroll position stays intact)
+        //   4. Applies highlight, then posts clp:refreshed back
+        try {
+            frame.contentWindow.postMessage({
+                type:      'clp:refresh',
+                articleId: currentArticleId,
+                selectors: highlightSelectors,
+            }, '*');
+        } catch { }
     }
 
     // -------------------------------------------------------------------------
@@ -354,12 +335,7 @@
 
     function handleFormSubmit(e) {
         if (!e.target.querySelector?.('[name="FORM_SUBMIT"]')) return;
-        // Capture scroll NOW — before Turbo navigation resets the iframe.
-        try {
-            savedScrollX = frame?.contentWindow?.scrollX || 0;
-            savedScrollY = frame?.contentWindow?.scrollY || 0;
-        } catch { savedScrollX = savedScrollY = 0; }
-        setTimeout(reloadPreview, 900);
+        setTimeout(refreshPreview, 900);
     }
 
     function observeSaveFlash() {
@@ -370,7 +346,7 @@
                 for (const node of m.addedNodes) {
                     if (node.nodeType !== 1) continue;
                     if (node.classList?.contains('tl_confirm') || node.querySelector?.('.tl_confirm')) {
-                        setTimeout(reloadPreview, 400);
+                        setTimeout(refreshPreview, 400);
                         return;
                     }
                 }

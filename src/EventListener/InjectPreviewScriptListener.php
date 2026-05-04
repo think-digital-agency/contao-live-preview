@@ -48,11 +48,51 @@ class InjectPreviewScriptListener
 
     private function buildInjection(): string
     {
-        // Inline to avoid an extra HTTP request. The style + script are small and
-        // only present when the page is loaded inside the preview iframe.
+        // Inline to avoid extra HTTP requests. Only present when loaded inside the
+        // preview iframe (?_clp=1). Handles two message types from the backend:
+        //   clp:highlight — scroll to element and flash an orange outline
+        //   clp:refresh   — fetch current page, swap article DOM node, then highlight
         return <<<'HTML'
 <style>.clp-highlight{animation:clp-bg-fade 2.25s linear forwards}@keyframes clp-bg-fade{0%{box-shadow:0 0 0 24px rgba(244,124,0,0),inset 0 0 0 9999px rgba(244,124,0,0)}15%{box-shadow:0 0 0 24px rgba(244,124,0,.12),inset 0 0 0 9999px rgba(244,124,0,.12)}85%{box-shadow:0 0 0 24px rgba(244,124,0,.12),inset 0 0 0 9999px rgba(244,124,0,.12)}100%{box-shadow:0 0 0 24px rgba(244,124,0,0),inset 0 0 0 9999px rgba(244,124,0,0)}}</style>
-<script>(function(){window.addEventListener('message',function(e){if(!e.data||'clp:highlight'!==e.data.type)return;var sels=e.data.selectors||[];var el=null;for(var i=0;i<sels.length;i++){el=document.querySelector(sels[i]);if(el)break;}if(!el)return;var bh=e.data.scrollBehavior||'smooth';el.scrollIntoView({behavior:bh,block:'center'});var t;function hl(){clearTimeout(t);window.removeEventListener('scrollend',hl);el.classList.add('clp-highlight');setTimeout(function(){el.classList.remove('clp-highlight')},2250);}if(bh==='instant'){hl();}else{if('onscrollend'in window)window.addEventListener('scrollend',hl,{once:true});t=setTimeout(hl,800);}})})();</script>
+<script>(function(){
+function findEl(sels){var el=null;for(var i=0;i<sels.length;i++){el=document.querySelector(sels[i]);if(el)break;}return el;}
+function highlight(el,bh){
+  el.scrollIntoView({behavior:bh||'smooth',block:'center'});
+  var t;
+  function hl(){clearTimeout(t);window.removeEventListener('scrollend',hl);el.classList.add('clp-highlight');setTimeout(function(){el.classList.remove('clp-highlight');},2250);}
+  if((bh||'smooth')==='instant'){hl();}else{if('onscrollend'in window)window.addEventListener('scrollend',hl,{once:true});t=setTimeout(hl,800);}
+}
+window.addEventListener('message',function(e){
+  if(!e.data||!e.data.type)return;
+  if(e.data.type==='clp:highlight'){
+    var el=findEl(e.data.selectors||[]);
+    if(el)highlight(el,e.data.scrollBehavior);
+    return;
+  }
+  if(e.data.type==='clp:refresh'){
+    var articleId=e.data.articleId;
+    var selectors=e.data.selectors||[];
+    var scrollX=window.scrollX,scrollY=window.scrollY;
+    fetch(window.location.href,{credentials:'same-origin',headers:{'X-Requested-With':'XMLHttpRequest'}})
+      .then(function(r){return r.text();})
+      .then(function(html){
+        var doc=new DOMParser().parseFromString(html,'text/html');
+        var sel='[data-contao-table="tl_article"][data-contao-id="'+articleId+'"]';
+        var fresh=doc.querySelector(sel);
+        var live=document.querySelector(sel);
+        if(fresh&&live){
+          live.replaceWith(fresh);
+          window.scrollTo({top:scrollY,left:scrollX,behavior:'instant'});
+          var el=findEl(selectors);
+          if(el)highlight(el,'instant');
+        }
+        window.parent.postMessage({type:'clp:refreshed',articleId:articleId},'*');
+      })
+      .catch(function(){window.parent.postMessage({type:'clp:refreshed',articleId:articleId},'*');});
+    return;
+  }
+});
+})();</script>
 HTML;
     }
 }
