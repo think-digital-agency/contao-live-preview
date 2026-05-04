@@ -61,11 +61,13 @@ class PreviewResolverController extends AbstractController
         $articleCssId = (string) ($pageData['articleCssId'] ?? '');
 
         // Ordered selector chain: JS tries each in sequence, uses the first match.
-        // 1. #article-{numericId}  — Contao's default when no CSS ID is set in backend
-        // 2. #article-{alias}      — when a custom article alias is set
-        // 3. #{cssId}              — when user has explicitly set a CSS ID in the backend
+        // 1. [data-contao-table="tl_article"][data-contao-id="{id}"] — primary, stable, no guessing
+        // 2. #article-{numericId}  — Contao's default CSS ID fallback
+        // 3. #article-{alias}      — alias-based CSS ID fallback
+        // 4. #{cssId}              — manually set CSS ID in the backend
         $selectors = [];
         if (\is_int($articleId) && $articleId > 0) {
+            $selectors[] = '[data-contao-table="tl_article"][data-contao-id="' . $articleId . '"]';
             $selectors[] = '#article-' . $articleId;
         }
         if ('' !== $articleAlias && $articleAlias !== (string) $articleId) {
@@ -78,6 +80,7 @@ class PreviewResolverController extends AbstractController
         return $this->json([
             'pageId'             => $pageData['pageId'],
             'pageAlias'          => $pageData['alias'],
+            'articleId'          => $articleId,
             'previewUrl'         => $previewUrl,
             'highlightSelectors' => $selectors,
         ]);

@@ -59,6 +59,11 @@
     // Empty array when context is tl_page (no article to highlight).
     let highlightSelectors = [];
 
+    // Numeric article ID resolved for the current context. Used to target the
+    // correct DOM node for partial refresh without a full iframe reload.
+    // null when context is tl_page (no article).
+    let currentArticleId = null;
+
     // 'smooth' for article context (user navigated to a different article — animate the scroll).
     // 'instant' for content-element context and after saves (position barely changes — no animation).
     let scrollBehavior = 'smooth';
@@ -271,6 +276,7 @@
 
             if (data.previewUrl) {
                 highlightSelectors = data.highlightSelectors || [];
+                currentArticleId   = data.articleId || null;
                 // Smooth scroll when navigating to a different article; instant when
                 // switching between content elements (position barely changes).
                 scrollBehavior = ctx.table === 'tl_content' ? 'instant' : 'smooth';
