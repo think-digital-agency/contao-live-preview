@@ -490,7 +490,13 @@
 
     // Sets sidebar width — shared by both the resizer drag and the W input.
     function setSidebarWidth(w) {
-        const maxW = Math.floor(window.innerWidth * 0.8);
+        const leftEl = document.getElementById('left');
+        const leftW  = leftEl ? leftEl.offsetWidth : 220;
+        // On narrow screens the sidebar overlays #main (position:fixed at ≤1200px),
+        // so the #main minimum doesn't apply — fall back to 80vw cap instead.
+        const maxW = window.innerWidth > 1200
+            ? Math.max(MIN_WIDTH, window.innerWidth - leftW - 660)
+            : Math.floor(window.innerWidth * 0.8);
         w = Math.round(Math.min(maxW, Math.max(MIN_WIDTH, w)));
         sidebar.style.setProperty('--clp-width', w + 'px');
         localStorage.setItem(LS_WIDTH_KEY, String(w));
