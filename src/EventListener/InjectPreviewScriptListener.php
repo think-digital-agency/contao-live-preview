@@ -53,7 +53,7 @@ class InjectPreviewScriptListener
         //   clp:highlight — scroll to element, apply persistent blue outline + label badge
         //   clp:refresh   — fetch current page, swap article DOM node, then highlight
         return <<<'HTML'
-<style>.clp-sel{outline:2px solid #0594ff!important;outline-offset:4px}.clp-badge{position:absolute;display:flex;align-items:center;gap:5px;background:#0594ff;color:#fff;font:500 11px/22px -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;padding:0 8px;border-radius:3px 3px 0 0;white-space:nowrap;pointer-events:none;z-index:2147483647}</style>
+<style>.clp-sel{outline:2px solid #0594ff!important;outline-offset:4px;position:relative!important;z-index:9999!important}.clp-badge{position:absolute;display:flex;align-items:center;gap:5px;background:#0594ff;color:#fff;font:500 11px/22px -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;padding:0 8px;border-radius:3px 3px 0 0;white-space:nowrap;pointer-events:none;z-index:2147483647}</style>
 <script>(function(){
 var _el=null,_badge=null,_gen=0;
 var _icon='<svg style="flex-shrink:0" width="9" height="11" viewBox="0 0 9 11" fill="none"><path d="M1 .5h5l2 2v8H1z" stroke="#fff" stroke-width="1.2"/><path d="M6 .5v2h2" stroke="#fff" stroke-width="1.2"/><line x1="2.5" y1="5" x2="6.5" y2="5" stroke="#fff" stroke-width="1"/><line x1="2.5" y1="7" x2="6.5" y2="7" stroke="#fff" stroke-width="1"/></svg>';
