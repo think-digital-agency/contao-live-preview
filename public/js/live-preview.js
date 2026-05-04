@@ -313,7 +313,7 @@
                 // switching between content elements (position barely changes).
                 scrollBehavior = ctx.table === 'tl_content' ? 'instant' : 'smooth';
 
-                if (urlDisplay) urlDisplay.value = data.previewUrl;
+                if (urlDisplay) urlDisplay.textContent = data.previewUrl;
                 const openBtn = document.getElementById('clp-open-tab');
                 if (openBtn) {
                     openBtn.disabled = false;
@@ -347,7 +347,7 @@
     function clearFrame() {
         if (frame) frame.src = '';
         frameNeedsReload = false;
-        if (urlDisplay) urlDisplay.value = '';
+        if (urlDisplay) urlDisplay.textContent = '';
         const openBtn = document.getElementById('clp-open-tab');
         if (openBtn) openBtn.disabled = true;
     }
@@ -502,7 +502,14 @@
         if (!frame || !frameWrap) return;
 
         const zoom     = zoomSelect ? parseFloat(zoomSelect.value || '1') : 1;
-        const sidebarW = parseInt(sidebar.style.getPropertyValue('--clp-width'), 10) || DEFAULT_WIDTH;
+        // Inline style is only present after the first setSidebarWidth() call.
+        // On first load after reload, fall back to localStorage, then the default.
+        const sidebarW = parseInt(
+            sidebar.style.getPropertyValue('--clp-width')
+            || localStorage.getItem(LS_WIDTH_KEY)
+            || String(DEFAULT_WIDTH),
+            10,
+        ) || DEFAULT_WIDTH;
         const wrapH    = frameWrap.offsetHeight;
 
         if (zoom === 1) {
