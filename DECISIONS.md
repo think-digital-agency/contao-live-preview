@@ -121,3 +121,38 @@ The iframe is already loaded on the correct frontend origin. `fetch(window.locat
 - (-) Fetches a full page HTML response (typically 20–100 KB) even though only the article HTML is used — acceptable for a backend-only tool
 - (-) Depends on `data-contao-table`/`data-contao-id` in the theme template; themes without these attributes fall back to CSS-ID-based highlight only (no DOM swap)
 - (-) `tl_page` edits (no `articleId`) do not trigger any visual refresh — the editor must manually reload the sidebar if they want to see page-level changes (metadata, title, layout)
+
+---
+
+## ADR-006: Rehydration via localStorage for save state across backend navigations
+
+**Date:** 2026-05  
+**Status:** Accepted
+
+**Context:**
+Contao 5 backend uses `@hotwired/turbo` for navigation. After form saves, Turbo normally performs a body-swap (Turbo Drive), which preserves `data-turbo-permanent` elements including the live preview sidebar and its iframe. The `refreshPreview()` mechanism (postMessage `clp:refresh`) handles this path correctly.
+
+However, all backend CSS/JS assets carry `data-turbo-track="reload"`. If any asset URL changes (e.g. after a deployment with fingerprinted assets), Turbo triggers a **full page reload** instead of a body-swap. In that case, the iframe is destroyed and recreated empty — losing scroll position, `currentArticleId`, and any in-flight `refreshPreview()` timer (cancelled by the browser navigation).
+
+Additionally, there is a timing race condition in the body-swap path: the 900ms `refreshPreview()` timer may fire before `resolveAndShow()` has returned, leaving `frameNeedsReload = false` and causing the refresh to silently do nothing.
+
+**Decision:**
+Add a two-phase state persistence mechanism:
+
+1. **Before save** (`handleFormSubmit`): write `{ articleId, iframeUrl, scrollX, scrollY, selectors, ts }` to `localStorage['clp_pending_save']`.
+2. **After any page init** (`onPageReady` → `tryRehydrate`): read and consume the state.
+   - `getCleanSrc() !== ''` (body-swap): pre-set `currentArticleId`, `highlightSelectors`, `frameNeedsReload = true` so the 900ms timer fires correctly regardless of resolve latency. State cleared by `clp:refreshed` message.
+   - `getCleanSrc() === ''` (full reload): load saved `iframeUrl`, restore scroll position on load, fire highlight. State cleared immediately.
+
+State expires after 30 seconds to prevent stale rehydrations.
+
+**Why localStorage and not sessionStorage:**
+`sessionStorage` is per-tab and survives reloads, but is cleared when the tab is closed. `localStorage` provides the same persistence within a reload cycle. Either would work; `localStorage` is consistent with the other `clp_*` keys already used.
+
+**Consequences:**
+- (+) Scroll position and highlight are restored after both body-swap AND full reload
+- (+) Fixes timing race: `frameNeedsReload = true` is set before `resolveAndShow()` completes
+- (+) Zero server-side changes — pure client-side state machine
+- (+) 30-second TTL prevents stale state from interfering with unrelated navigations
+- (-) `savePendingState()` reads `frame.contentWindow.scrollX/Y` which requires same-origin iframe access — fails silently if restricted (scroll will be 0,0)
+- (-) If the user saves but then navigates the backend for more than 30 seconds before the page is fully loaded, state is discarded (acceptable)

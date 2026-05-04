@@ -115,3 +115,4 @@ The partial refresh mechanism requires article wrappers in the frontend to carry
 |---|---|---|
 | `clp_sidebar_open` | `'0'` / `'1'` | Persist open/closed state across sessions |
 | `clp_sidebar_width` | integer (px) | Persist drag-resized sidebar width |
+| `clp_pending_save` | JSON object | Transient: save state before backend form submit; consumed by `tryRehydrate()` on next page init. Expires after 30 s. Cleared by `clp:refreshed` message. |

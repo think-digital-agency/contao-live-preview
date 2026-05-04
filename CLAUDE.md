@@ -21,6 +21,7 @@
 | Flash prevention | `turbo:before-render` pre-stamps `clp-open` on incoming body | Without this, `body.clp-open` is absent for one paint after body swap |
 | Preview URL | `PageModel::findWithDetails()->getAbsoluteUrl()` | Inherits urlPrefix, language, and domain from the root page hierarchy |
 | Partial refresh after save | `clp:refresh` postMessage → frontend self-fetch + DOMParser swap | No full iframe reload — scroll position preserved, only the edited article node is replaced |
+| Rehydration after full reload | `clp_pending_save` localStorage state | Restores iframe URL + scroll + highlight if Turbo triggers a full page reload (e.g. after deployment with changed assets) |
 | Resize | Pointer Events + `setPointerCapture` | Receives `pointermove`/`pointerup` even when cursor leaves the browser window |
 | Extensibility | `PreviewUrlResolverInterface` | Third-party bundles alias the interface to add support for news, events, custom models |
 | Highlight injection | `?_clp=1` + `KernelEvents::RESPONSE` listener | Frontend script injected ephemerally into the response — zero impact on normal page output |
@@ -181,6 +182,8 @@ if (doV === 'news' && id > 0) {
 - **Non-routable pages**: `buildPreviewUrl()` walks up the ancestor tree when it encounters `error_404`, `folder`, or `root` page types.
 - **clp:refresh and frontend caching**: `refreshPreview()` sends a `clp:refresh` postMessage; the frontend then fetches `window.location.href` (which includes `?_clp=1`). If Contao's page cache has not been invalidated by the save yet, the fetched HTML may be stale. Contao normally clears affected page caches on save — if a CDN or reverse proxy caches frontend pages aggressively, the DOM swap may show stale content.
 - **tl_page context**: when editing a page (no article), `currentArticleId` is null. `refreshPreview()` returns early — no DOM swap, no visual update. This is intentional: page-level edits (metadata, title, layout) affect the whole page and there's no stable article node to swap.
+- **Full page reload detection**: `getCleanSrc()` returns `''` when the iframe is empty (fresh after full reload) and a non-empty URL when it survived a Turbo body-swap. `tryRehydrate()` uses this to distinguish the two paths.
+- **`clp_pending_save` TTL**: state expires after 30 seconds. If the user saves and then navigates for more than 30 seconds before the page finishes loading, the state is discarded.
 
 ---
 
