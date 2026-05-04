@@ -93,26 +93,43 @@ body.clp-open #clp-right {
 }
 
 /* -------------------------------------------------------------------------
-   Toolbar — single row: [URL] [↗] | [W × H] | [zoom]
+   Toolbar — single row: left[URL ↗] · center[W × H] · right[zoom]
    ------------------------------------------------------------------------- */
 #clp-toolbar {
     display: flex;
     align-items: center;
-    gap: 5px;
-    padding: 0 8px 0 10px;
     height: 36px;
     flex-shrink: 0;
     background: var(--panel-bg, #f3f3f5);
     border-bottom: 1px solid var(--border, #eaeaec);
 }
 
-/* Vertical pipe separator between the three groups */
-.clp-toolbar-sep {
+/* Left group: URL + open-tab button — takes remaining space */
+.clp-tb-left {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 0;
+    padding-left: 10px;
+}
+
+/* Center group: W × H — fixed width, visually centred */
+.clp-tb-center {
     flex-shrink: 0;
-    width: 1px;
-    height: 14px;
-    background: var(--border, #d0d0d2);
-    margin: 0 2px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 0 10px;
+}
+
+/* Right group: zoom select — mirrors left width so center stays centred */
+.clp-tb-right {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding-right: 8px;
 }
 
 #clp-url-display {

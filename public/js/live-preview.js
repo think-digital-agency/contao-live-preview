@@ -491,22 +491,38 @@
     // Sets sidebar width — shared by both the resizer drag and the W input.
     function setSidebarWidth(w) {
         const maxW = Math.floor(window.innerWidth * 0.8);
-        w = Math.min(maxW, Math.max(MIN_WIDTH, w));
+        w = Math.round(Math.min(maxW, Math.max(MIN_WIDTH, w)));
         sidebar.style.setProperty('--clp-width', w + 'px');
         localStorage.setItem(LS_WIDTH_KEY, String(w));
         if (vwInput) vwInput.value = w;
+        applyViewport(); // recalculate inverse-zoom iframe dimensions
     }
 
     function applyViewport() {
-        if (!frame) return;
+        if (!frame || !frameWrap) return;
 
-        const zoom = zoomSelect ? parseFloat(zoomSelect.value || '1') : 1;
-        frame.style.transform       = zoom !== 1 ? 'scale(' + zoom + ')' : '';
-        frame.style.transformOrigin = 'top left';
+        const zoom     = zoomSelect ? parseFloat(zoomSelect.value || '1') : 1;
+        const sidebarW = parseInt(sidebar.style.getPropertyValue('--clp-width'), 10) || DEFAULT_WIDTH;
+        const wrapH    = frameWrap.offsetHeight;
 
-        if (vhInput && frameWrap) {
-            vhInput.value = Math.round(frameWrap.offsetHeight);
+        if (zoom === 1) {
+            // Natural fill — no transform, no explicit dimensions.
+            frame.style.width           = '100%';
+            frame.style.height          = '100%';
+            frame.style.maxWidth        = '';
+            frame.style.transform       = '';
+            frame.style.transformOrigin = '';
+        } else {
+            // Scale the iframe down visually while enlarging it inversely so it
+            // fills the wrapper exactly. overflow:hidden on the wrapper clips it.
+            frame.style.width           = Math.round(sidebarW / zoom) + 'px';
+            frame.style.height          = wrapH > 0 ? Math.round(wrapH / zoom) + 'px' : '100%';
+            frame.style.maxWidth        = 'none';
+            frame.style.transform       = 'scale(' + zoom + ')';
+            frame.style.transformOrigin = 'top left';
         }
+
+        if (vhInput) vhInput.value = wrapH;
     }
 
     function initViewportControls() {
@@ -547,11 +563,9 @@
             });
         }
 
-        // Keep vhInput live whenever the wrapper resizes (sidebar drag, window resize).
-        if (frameWrap && vhInput) {
-            new ResizeObserver(() => {
-                vhInput.value = Math.round(frameWrap.offsetHeight);
-            }).observe(frameWrap);
+        // Keep vhInput live and recompute zoom dimensions whenever wrapper resizes.
+        if (frameWrap) {
+            new ResizeObserver(() => applyViewport()).observe(frameWrap);
         }
     }
 
