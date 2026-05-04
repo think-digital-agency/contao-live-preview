@@ -419,14 +419,14 @@
         const iframeLoaded = !!getCleanSrc(); // false when iframe was recreated fresh
 
         if (iframeLoaded) {
-            // Body-swap path: iframe survived. Schedule exactly one refresh from here —
-            // this is the single code path that drives clp:refresh after a save.
-            // 250 ms gives the new backend page time to paint before we swap the article.
+            // Body-swap path: iframe survived. Clear state NOW so further navigations
+            // (e.g. Contao redirect chain after "Save and Close") don't re-trigger.
+            // clp:refreshed will call removeItem again — that's a harmless no-op.
+            localStorage.removeItem(LS_SAVE_KEY);
             if (state.articleId)         currentArticleId   = state.articleId;
             if (state.selectors?.length) highlightSelectors = state.selectors;
             frameNeedsReload = true;
             scheduleRefresh(250);
-            // State will be cleared by the clp:refreshed message handler.
             return;
         }
 
