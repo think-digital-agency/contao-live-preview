@@ -36,7 +36,6 @@
     const LS_OPEN_KEY      = 'clp_sidebar_open';
     const LS_WIDTH_KEY     = 'clp_sidebar_width';
     const LS_SAVE_KEY      = 'clp_pending_save';
-    const LS_VW_KEY        = 'clp_vw';
     const LS_ZOOM_KEY      = 'clp_zoom';
     const DEFAULT_WIDTH    = 420;
     const MIN_WIDTH        = 280;
@@ -489,20 +488,19 @@
     // Bound once (sidebar is data-turbo-permanent).
     // -------------------------------------------------------------------------
 
+    // Sets sidebar width — shared by both the resizer drag and the W input.
+    function setSidebarWidth(w) {
+        const maxW = Math.floor(window.innerWidth * 0.8);
+        w = Math.min(maxW, Math.max(MIN_WIDTH, w));
+        sidebar.style.setProperty('--clp-width', w + 'px');
+        localStorage.setItem(LS_WIDTH_KEY, String(w));
+        if (vwInput) vwInput.value = w;
+    }
+
     function applyViewport() {
         if (!frame) return;
 
-        const vw   = vwInput   ? parseInt(vwInput.value   || '0', 10) : 0;
-        const zoom = zoomSelect ? parseFloat(zoomSelect.value || '1')  : 1;
-
-        if (vw >= 320) {
-            frame.style.width    = vw + 'px';
-            frame.style.maxWidth = 'none';
-        } else {
-            frame.style.width    = '100%';
-            frame.style.maxWidth = '';
-        }
-
+        const zoom = zoomSelect ? parseFloat(zoomSelect.value || '1') : 1;
         frame.style.transform       = zoom !== 1 ? 'scale(' + zoom + ')' : '';
         frame.style.transformOrigin = 'top left';
 
@@ -512,11 +510,18 @@
     }
 
     function initViewportControls() {
-        // Restore persisted values.
-        const savedVw   = parseInt(localStorage.getItem(LS_VW_KEY) || '0', 10);
-        const savedZoom = localStorage.getItem(LS_ZOOM_KEY) || '1';
+        // Initialise W input from current sidebar width.
+        const currentW = parseInt(
+            sidebar.style.getPropertyValue('--clp-width')
+            || getComputedStyle(sidebar).getPropertyValue('--clp-width')
+            || localStorage.getItem(LS_WIDTH_KEY)
+            || String(DEFAULT_WIDTH),
+            10,
+        ) || DEFAULT_WIDTH;
+        if (vwInput) vwInput.value = currentW;
 
-        if (savedVw >= 320 && vwInput) vwInput.value = savedVw;
+        // Restore saved zoom.
+        const savedZoom = localStorage.getItem(LS_ZOOM_KEY) || '1';
         if (zoomSelect) zoomSelect.value = savedZoom;
 
         applyViewport();
@@ -524,15 +529,14 @@
         if (vwInput) {
             vwInput.addEventListener('change', () => {
                 const v = parseInt(vwInput.value || '0', 10);
-                if (v >= 320) {
-                    localStorage.setItem(LS_VW_KEY, String(v));
+                if (v >= MIN_WIDTH) {
+                    setSidebarWidth(v);
                 } else {
-                    vwInput.value = '';
-                    localStorage.removeItem(LS_VW_KEY);
+                    // Clamp: restore to current actual width
+                    vwInput.value = parseInt(localStorage.getItem(LS_WIDTH_KEY) || String(DEFAULT_WIDTH), 10);
                 }
                 applyViewport();
             });
-            // Submit on Enter
             vwInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') vwInput.blur(); });
         }
 
@@ -543,7 +547,7 @@
             });
         }
 
-        // Keep vhInput in sync whenever the wrapper changes height (resize drag etc.)
+        // Keep vhInput live whenever the wrapper resizes (sidebar drag, window resize).
         if (frameWrap && vhInput) {
             new ResizeObserver(() => {
                 vhInput.value = Math.round(frameWrap.offsetHeight);
@@ -583,12 +587,8 @@
             if (!el.hasPointerCapture(e.pointerId)) return; // not dragging
 
             // Resizer is on the LEFT edge; dragging left = wider sidebar.
-            // Max is 80 vw so the backend content area always stays usable.
-            const maxW = Math.floor(window.innerWidth * 0.8);
             const delta = startX - e.clientX;
-            const w = Math.min(maxW, Math.max(MIN_WIDTH, startW + delta));
-            sidebar.style.setProperty('--clp-width', w + 'px');
-            localStorage.setItem(LS_WIDTH_KEY, String(w));
+            setSidebarWidth(startW + delta);
         });
 
         el.addEventListener('pointerup', endDrag);
