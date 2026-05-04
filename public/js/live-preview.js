@@ -14,6 +14,13 @@
  * turbo:before-render pre-applies body.clp-open to the *incoming* body so
  * the sidebar is never momentarily display:none during the swap.
  *
+ * Save → backend navigation → two possible paths:
+ *   A. Turbo body-swap (normal): iframe survives via data-turbo-permanent.
+ *      refreshPreview() fires at 900ms via the form-submit timer.
+ *   B. Full page reload (e.g. after deployment, when data-turbo-track="reload"
+ *      assets change): iframe is recreated empty. The rehydration system
+ *      (localStorage clp_pending_save) restores the state after reload.
+ *
  * URL disambiguation (verified against real Contao 5.7 backend URLs):
  *   ?do=article&table=tl_content&act=edit&id=X  → id = content element
  *   ?do=article&table=tl_content&id=X           → id = article (list view)
@@ -28,9 +35,11 @@
     const RESOLVE_ENDPOINT = '/contao/live-preview/resolve';
     const LS_OPEN_KEY      = 'clp_sidebar_open';
     const LS_WIDTH_KEY     = 'clp_sidebar_width';
+    const LS_SAVE_KEY      = 'clp_pending_save';
     const DEFAULT_WIDTH    = 420;
     const MIN_WIDTH        = 280;
     const RESOLVE_DEBOUNCE = 250;
+    const SAVE_STATE_TTL   = 30_000; // ms — discard stale state after 30 s
 
     // -------------------------------------------------------------------------
     // DOM references — acquired once; survive Turbo nav via data-turbo-permanent
@@ -81,6 +90,10 @@
 
         if (!sidebar || !frame) return;
 
+        // Rehydration must run before isOpen is stamped and before triggerResolve,
+        // because it may set frame.src and pre-populate currentArticleId.
+        tryRehydrate();
+
         // Sync isOpen from localStorage and stamp the current body.
         // turbo:before-render already stamped the incoming body, so this is a
         // no-op in the normal navigation case but handles hard reload correctly.
@@ -101,6 +114,14 @@
             });
 
             document.addEventListener('submit', handleFormSubmit);
+
+            // clp:refreshed from the iframe confirms the DOM swap completed.
+            // Clear any pending save state so rehydration doesn't fire again.
+            window.addEventListener('message', (e) => {
+                if (e.data?.type === 'clp:refreshed') {
+                    localStorage.removeItem(LS_SAVE_KEY);
+                }
+            });
 
             // Resizer lives inside the permanent sidebar — bind event listeners once.
             bindResizer();
@@ -330,11 +351,102 @@
     }
 
     // -------------------------------------------------------------------------
+    // Rehydration — save/restore state across backend navigations
+    //
+    // Contao 5 normally uses Turbo body-swap after saves, so #clp-right
+    // (data-turbo-permanent) survives and the iframe keeps its content.
+    // However, if data-turbo-track="reload" assets change (e.g. after a
+    // deployment), Turbo triggers a full page reload — the iframe is destroyed.
+    //
+    // Before every save we write state to localStorage. On the next onPageReady:
+    //   • iframe has src  → body-swap path: pre-set flags so the 900ms
+    //                       refreshPreview timer fires even when resolve is slow
+    //   • iframe is empty → full-reload path: load the saved URL, restore scroll,
+    //                       re-highlight immediately
+    // -------------------------------------------------------------------------
+
+    function savePendingState() {
+        if (!currentArticleId || !getCleanSrc()) return; // nothing worth saving
+
+        let scrollX = 0, scrollY = 0;
+        try { scrollX = frame.contentWindow.scrollX || 0; } catch { }
+        try { scrollY = frame.contentWindow.scrollY || 0; } catch { }
+
+        try {
+            localStorage.setItem(LS_SAVE_KEY, JSON.stringify({
+                articleId: currentArticleId,
+                iframeUrl: getCleanSrc(),
+                selectors: highlightSelectors,
+                scrollX,
+                scrollY,
+                ts: Date.now(),
+            }));
+        } catch { }
+    }
+
+    function tryRehydrate() {
+        let state;
+        try {
+            const raw = localStorage.getItem(LS_SAVE_KEY);
+            if (!raw) return;
+            state = JSON.parse(raw);
+        } catch {
+            localStorage.removeItem(LS_SAVE_KEY);
+            return;
+        }
+
+        if (!state || Date.now() - state.ts > SAVE_STATE_TTL) {
+            localStorage.removeItem(LS_SAVE_KEY);
+            return;
+        }
+
+        const iframeLoaded = !!getCleanSrc(); // false when iframe was recreated fresh
+
+        if (iframeLoaded) {
+            // Body-swap path: iframe survived, the 900ms refreshPreview timer is
+            // already running. Pre-set the flags so it fires correctly even if the
+            // resolve API hasn't returned yet.
+            if (state.articleId)        currentArticleId   = state.articleId;
+            if (state.selectors?.length) highlightSelectors = state.selectors;
+            frameNeedsReload = true;
+            // State will be cleared by the clp:refreshed message handler.
+            return;
+        }
+
+        // Full-reload path: iframe is empty. Load the saved URL, then restore.
+        localStorage.removeItem(LS_SAVE_KEY);
+
+        if (!state.iframeUrl) return;
+
+        currentArticleId   = state.articleId  || null;
+        highlightSelectors = state.selectors  || [];
+        frameNeedsReload   = false; // will be set true on load
+
+        frame.src = addClpParam(state.iframeUrl);
+        frame.addEventListener('load', () => {
+            frameNeedsReload = true;
+            if (state.scrollX || state.scrollY) {
+                try {
+                    frame.contentWindow.scrollTo({
+                        top:      state.scrollY,
+                        left:     state.scrollX,
+                        behavior: 'instant',
+                    });
+                } catch { }
+            }
+            sendHighlight('instant');
+        }, { once: true });
+    }
+
+    // -------------------------------------------------------------------------
     // Save detection
     // -------------------------------------------------------------------------
 
     function handleFormSubmit(e) {
         if (!e.target.querySelector?.('[name="FORM_SUBMIT"]')) return;
+        // Persist state before navigation so rehydration can restore it if a
+        // full page reload occurs (e.g. Turbo triggers reload on changed assets).
+        savePendingState();
         setTimeout(refreshPreview, 900);
     }
 
