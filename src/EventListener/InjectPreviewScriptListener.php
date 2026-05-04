@@ -50,30 +50,46 @@ class InjectPreviewScriptListener
     {
         // Inline to avoid extra HTTP requests. Only present when loaded inside the
         // preview iframe (?_clp=1). Handles two message types from the backend:
-        //   clp:highlight — scroll to element and flash an orange outline
+        //   clp:highlight — scroll to element, apply persistent blue outline + label badge
         //   clp:refresh   — fetch current page, swap article DOM node, then highlight
         return <<<'HTML'
-<style>.clp-highlight{animation:clp-bg-fade 1250ms linear forwards}@keyframes clp-bg-fade{0%{box-shadow:0 0 0 24px rgba(244,124,0,0),inset 0 0 0 9999px rgba(244,124,0,0)}25%{box-shadow:0 0 0 24px rgba(244,124,0,.12),inset 0 0 0 9999px rgba(244,124,0,.12)}75%{box-shadow:0 0 0 24px rgba(244,124,0,.12),inset 0 0 0 9999px rgba(244,124,0,.12)}100%{box-shadow:0 0 0 24px rgba(244,124,0,0),inset 0 0 0 9999px rgba(244,124,0,0)}}</style>
+<style>.clp-sel{outline:2px solid #0594ff!important;outline-offset:4px}.clp-badge{position:absolute;display:flex;align-items:center;gap:5px;background:#0594ff;color:#fff;font:500 11px/22px -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;padding:0 8px;border-radius:3px 3px 0 0;white-space:nowrap;pointer-events:none;z-index:2147483647}</style>
 <script>(function(){
-function findEl(sels){var el=null;for(var i=0;i<sels.length;i++){el=document.querySelector(sels[i]);if(el)break;}return el;}
-function highlight(el,bh){
+var _el=null,_badge=null,_gen=0;
+var _icon='<svg style="flex-shrink:0" width="9" height="11" viewBox="0 0 9 11" fill="none"><path d="M1 .5h5l2 2v8H1z" stroke="#fff" stroke-width="1.2"/><path d="M6 .5v2h2" stroke="#fff" stroke-width="1.2"/><line x1="2.5" y1="5" x2="6.5" y2="5" stroke="#fff" stroke-width="1"/><line x1="2.5" y1="7" x2="6.5" y2="7" stroke="#fff" stroke-width="1"/></svg>';
+function findEl(sels){var r=null;for(var i=0;i<sels.length;i++){r=document.querySelector(sels[i]);if(r)break;}return r;}
+function clpClear(){if(_el){_el.classList.remove('clp-sel');_el=null;}if(_badge){_badge.remove();_badge=null;}}
+function clpBadgePos(el){var r=el.getBoundingClientRect();_badge.style.top=Math.max(0,window.scrollY+r.top-28)+'px';_badge.style.left=(window.scrollX+r.left+30)+'px';}
+function highlight(el,bh,label){
+  clpClear();
+  _gen++;var myGen=_gen;
   var rect=el.getBoundingClientRect();
   var targetY=window.scrollY+rect.top-(window.innerHeight-rect.height)/2;
   window.scrollTo({top:Math.max(0,targetY),left:0,behavior:bh||'smooth'});
-  var t;
-  function hl(){clearTimeout(t);window.removeEventListener('scrollend',hl);el.classList.add('clp-highlight');setTimeout(function(){el.classList.remove('clp-highlight');},1250);}
-  if((bh||'smooth')==='instant'){hl();}else{if('onscrollend'in window)window.addEventListener('scrollend',hl,{once:true});t=setTimeout(hl,800);}
+  function apply(){
+    if(_gen!==myGen)return;
+    _el=el;el.classList.add('clp-sel');
+    if(label){
+      _badge=document.createElement('div');_badge.className='clp-badge';
+      _badge.innerHTML=_icon;
+      var s=document.createElement('span');s.textContent=label;_badge.appendChild(s);
+      document.body.appendChild(_badge);clpBadgePos(el);
+    }
+  }
+  if((bh||'smooth')==='instant'){apply();}
+  else{var t;function hl(){clearTimeout(t);window.removeEventListener('scrollend',hl);apply();}if('onscrollend'in window)window.addEventListener('scrollend',hl,{once:true});t=setTimeout(hl,800);}
 }
 window.addEventListener('message',function(e){
   if(!e.data||!e.data.type)return;
   if(e.data.type==='clp:highlight'){
     var el=findEl(e.data.selectors||[]);
-    if(el)highlight(el,e.data.scrollBehavior);
+    if(el)highlight(el,e.data.scrollBehavior,e.data.label||'');
     return;
   }
   if(e.data.type==='clp:refresh'){
     var articleId=e.data.articleId;
     var selectors=e.data.selectors||[];
+    var label=e.data.label||'';
     var scrollX=window.scrollX,scrollY=window.scrollY;
     fetch(window.location.href,{credentials:'same-origin',headers:{'X-Requested-With':'XMLHttpRequest'}})
       .then(function(r){return r.text();})
@@ -86,7 +102,7 @@ window.addEventListener('message',function(e){
           live.replaceWith(fresh);
           window.scrollTo({top:scrollY,left:scrollX,behavior:'instant'});
           var el=findEl(selectors);
-          if(el)highlight(el,'instant');
+          if(el)highlight(el,'instant',label);
         }
         window.parent.postMessage({type:'clp:refreshed',articleId:articleId},'*');
       })

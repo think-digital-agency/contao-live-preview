@@ -81,6 +81,7 @@ class PreviewResolverController extends AbstractController
             'pageId'             => $pageData['pageId'],
             'pageAlias'          => $pageData['alias'],
             'articleId'          => $articleId,
+            'articleTitle'       => (string) ($pageData['articleTitle'] ?? ''),
             'previewUrl'         => $previewUrl,
             'highlightSelectors' => $selectors,
         ]);

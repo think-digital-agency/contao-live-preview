@@ -45,7 +45,7 @@ class PreviewUrlResolver implements PreviewUrlResolverInterface
     private function resolveFromArticle(int $id): ?array
     {
         $row = $this->connection->fetchAssociative(
-            'SELECT pid, alias, cssID FROM tl_article WHERE id = ?',
+            'SELECT pid, alias, cssID, title FROM tl_article WHERE id = ?',
             [$id],
         );
 
@@ -58,6 +58,7 @@ class PreviewUrlResolver implements PreviewUrlResolverInterface
         if (null !== $result) {
             $result['articleId']    = $id;
             $result['articleAlias'] = (string) ($row['alias'] ?? '');
+            $result['articleTitle'] = (string) ($row['title'] ?? '');
 
             // cssID is stored as a:2:{i:0;s:N:"id";i:1;s:N:"class";}
             $cssIdData = @unserialize((string) ($row['cssID'] ?? ''));
