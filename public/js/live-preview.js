@@ -136,6 +136,17 @@
                 }
             });
 
+            // Re-clamp sidebar width whenever the browser window is resized.
+            // Uses the last persisted normal-mode width as the target; overlay
+            // mode ignores that and applies its own fixed width.
+            window.addEventListener('resize', () => {
+                if (!isOpen) return;
+                const savedW = parseInt(
+                    localStorage.getItem(LS_WIDTH_KEY) || String(DEFAULT_WIDTH), 10,
+                ) || DEFAULT_WIDTH;
+                setSidebarWidth(savedW);
+            });
+
             // Resizer lives inside the permanent sidebar — bind event listeners once.
             bindResizer();
             initViewportControls();
@@ -488,20 +499,32 @@
     // Bound once (sidebar is data-turbo-permanent).
     // -------------------------------------------------------------------------
 
-    // Sets sidebar width — shared by both the resizer drag and the W input.
+    function isOverlayMode() {
+        return window.innerWidth <= 1200;
+    }
+
+    // Sets sidebar width — shared by the resizer drag, the W input, and the
+    // window-resize handler. Handles both normal and overlay (≤1200px) modes.
     function setSidebarWidth(w) {
-        const leftEl = document.getElementById('left');
-        const leftW  = leftEl ? leftEl.offsetWidth : 220;
-        // On narrow screens the sidebar overlays #main (position:fixed at ≤1200px),
-        // so the #main minimum doesn't apply — fall back to 80vw cap instead.
-        const maxW = window.innerWidth > 1200
-            ? Math.max(MIN_WIDTH, window.innerWidth - leftW - 660)
-            : Math.floor(window.innerWidth * 0.8);
-        w = Math.round(Math.min(maxW, Math.max(MIN_WIDTH, w)));
-        sidebar.style.setProperty('--clp-width', w + 'px');
-        localStorage.setItem(LS_WIDTH_KEY, String(w));
-        if (vwInput) vwInput.value = w;
-        applyViewport(); // recalculate inverse-zoom iframe dimensions
+        let finalW;
+
+        if (isOverlayMode()) {
+            // Overlay mode: fixed max of 1024px, no resize by the user.
+            finalW = Math.min(1024, window.innerWidth);
+            sidebar.style.setProperty('--clp-width', finalW + 'px');
+            // Do NOT persist — we want the normal-mode width preserved in localStorage.
+            if (vwInput) { vwInput.value = finalW; vwInput.disabled = true; }
+        } else {
+            const leftEl = document.getElementById('left');
+            const leftW  = leftEl ? leftEl.offsetWidth : 220;
+            const maxW   = Math.max(MIN_WIDTH, window.innerWidth - leftW - 660);
+            finalW = Math.round(Math.min(maxW, Math.max(MIN_WIDTH, w)));
+            sidebar.style.setProperty('--clp-width', finalW + 'px');
+            localStorage.setItem(LS_WIDTH_KEY, String(finalW));
+            if (vwInput) { vwInput.value = finalW; vwInput.disabled = false; }
+        }
+
+        applyViewport();
     }
 
     function applyViewport() {
@@ -595,7 +618,8 @@
         let startX = 0, startW = 0;
 
         el.addEventListener('pointerdown', (e) => {
-            if (e.button !== 0) return; // left button only
+            if (e.button !== 0) return;   // left button only
+            if (isOverlayMode()) return;  // no resize in overlay mode
 
             const cssVal = sidebar.style.getPropertyValue('--clp-width')
                         || getComputedStyle(sidebar).getPropertyValue('--clp-width')
