@@ -61,10 +61,17 @@ Response: `application/json`
 ```json
 {
   "pageId": 42,
+  "articleId": 151,
   "pageAlias": "home",
-  "previewUrl": "http://localhost:8080/de/home.html"
+  "previewUrl": "http://localhost:8080/de/home.html",
+  "highlightSelectors": [
+    "[data-contao-table=\"tl_article\"][data-contao-id=\"151\"]",
+    "#article-151"
+  ]
 }
 ```
+
+`articleId` is `null` when context is `tl_page` (no article). `highlightSelectors` is ordered: primary is the stable `data-contao-*` attribute selector, fallbacks are CSS-ID-based.
 
 The `previewUrl` is built via `PageModel::findWithDetails($pageId)->getAbsoluteUrl()`, which inherits urlPrefix, language, and domain from the full page hierarchy. Non-routable page types (`error_404`, `folder`, `root`) are skipped by walking up to the nearest routable ancestor.
 
@@ -83,8 +90,22 @@ The `previewUrl` is built via `PageModel::findWithDetails($pageId)->getAbsoluteU
 | Table | Fields read | Purpose |
 |---|---|---|
 | `tl_content` | `id`, `pid` | Walk up to parent article |
-| `tl_article` | `id`, `pid` | Walk up to parent page |
+| `tl_article` | `id`, `pid`, `alias`, `cssID` | Walk up to parent page; alias + cssID used for fallback highlight selectors |
 | `tl_page` | `id`, `alias` | Identify the page; URL built via Contao's PageModel, not raw fields |
+
+---
+
+## Frontend DOM Contract
+
+The partial refresh mechanism requires article wrappers in the frontend to carry:
+
+```html
+<div data-contao-table="tl_article" data-contao-id="42" id="article-42" ...>
+```
+
+**Who provides it:** `templates/theme-design/mod_article.html.twig` (Design+ theme) via the `attrs()` Twig API.
+
+**Selector priority:** `[data-contao-table="tl_article"][data-contao-id="N"]` is primary (unambiguous). CSS-ID selectors (`#article-N`, `#article-alias`, `#custom-id`) are fallbacks for themes without `data-contao-*` attributes.
 
 ---
 

@@ -85,3 +85,39 @@ The original implementation used `position: fixed` on the sidebar with `margin-r
 - (+) Resize handle uses Pointer Events + `setPointerCapture` — drag works even when cursor leaves the browser window
 - (-) Depends on Contao's `#container` being `display: flex` with the specific `#left`/`#main` structure (verified for Contao 5.7)
 - (-) On screens < 1200px the sidebar switches to `position: fixed` overlay to avoid crushing `#main` below usable width
+
+---
+
+## ADR-005: Article-level DOM swap via self-fetch instead of full iframe reload
+
+**Date:** 2026-05  
+**Status:** Accepted
+
+**Context:**
+After a backend save, the preview must show the updated frontend content. The previous approach was: set `frame.src = previewUrl + ?_r=<timestamp>` to force a full page reload in the iframe. This had two problems:
+1. Visible flicker: the iframe blanks out, reloads all assets, re-renders, and scroll position is lost
+2. Complexity: required capturing the scroll position *before* the Turbo navigation that follows a form submit, then restoring it asynchronously after the iframe loaded
+
+**Decision:**
+Replace full iframe reload with an article-level DOM swap:
+1. Backend sends `{ type: 'clp:refresh', articleId, selectors }` via postMessage
+2. The injected frontend script (from `InjectPreviewScriptListener`) handles it:
+   - `fetch(window.location.href)` — same-origin, no CORS required, credentials included
+   - `DOMParser` parses the full HTML response (no execution of scripts)
+   - Extracts `[data-contao-table="tl_article"][data-contao-id="{articleId}"]` from the parsed doc
+   - Replaces the live DOM node with `Element.replaceWith()`
+   - Restores scroll position, applies highlight animation
+   - Posts `clp:refreshed` acknowledgement back to the backend
+3. The frontend article template (`mod_article.html.twig`) must emit `data-contao-table` + `data-contao-id` attributes
+
+**Why self-fetch (not a server-side fragment endpoint):**
+The iframe is already loaded on the correct frontend origin. `fetch(window.location.href)` is a trivially same-origin request — no CORS, no auth tokens, no extra server route needed. A dedicated fragment endpoint would require rendering the article in isolation outside the normal Contao frontend pipeline, which is fragile and complex.
+
+**Consequences:**
+- (+) No iframe reload — no flicker, no asset re-fetching
+- (+) Scroll position preserved without any pre-submit capture logic
+- (+) No new server-side endpoint needed
+- (+) Falls through gracefully: if `[data-contao-id]` is not found in fetched doc, DOM is unchanged
+- (-) Fetches a full page HTML response (typically 20–100 KB) even though only the article HTML is used — acceptable for a backend-only tool
+- (-) Depends on `data-contao-table`/`data-contao-id` in the theme template; themes without these attributes fall back to CSS-ID-based highlight only (no DOM swap)
+- (-) `tl_page` edits (no `articleId`) do not trigger any visual refresh — the editor must manually reload the sidebar if they want to see page-level changes (metadata, title, layout)
