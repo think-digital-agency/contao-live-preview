@@ -256,6 +256,9 @@ body.clp-open #clp-right {
 #clp-toggle-item {
     display: flex;
     align-items: stretch;
+    margin-left: 8px;
+    padding-left: 8px;
+    border-left: 1px solid rgba(255, 255, 255, .18);
 }
 
 #clp-toggle-btn {

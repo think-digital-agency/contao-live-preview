@@ -174,12 +174,12 @@
         const btn = document.createElement('button');
         btn.id   = 'clp-toggle-btn';
         btn.type = 'button';
-        btn.setAttribute('aria-label', 'Live Preview');
+        btn.setAttribute('aria-label', 'Live-Preview');
         btn.innerHTML =
-            '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
-            + '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>'
+            '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+            + '<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>'
             + '</svg>'
-            + '<span>Preview</span>';
+            + '<span>Live-Preview</span>';
         btn.addEventListener('click', toggleSidebar);
 
         li.appendChild(btn);
@@ -562,21 +562,35 @@
     }
 
     function initViewportControls() {
-        // Initialise W input from current sidebar width.
-        const currentW = parseInt(
-            sidebar.style.getPropertyValue('--clp-width')
-            || getComputedStyle(sidebar).getPropertyValue('--clp-width')
-            || localStorage.getItem(LS_WIDTH_KEY)
-            || String(DEFAULT_WIDTH),
-            10,
-        ) || DEFAULT_WIDTH;
-        if (vwInput) vwInput.value = currentW;
+        const hasSavedWidth = !!localStorage.getItem(LS_WIDTH_KEY);
 
-        // Restore saved zoom.
-        const savedZoom = localStorage.getItem(LS_ZOOM_KEY) || '1';
-        if (zoomSelect) zoomSelect.value = savedZoom;
+        if (!hasSavedWidth && !isOverlayMode()) {
+            // First open ever — pick the smartest initial width + zoom:
+            //   • Ideal: sidebar ≥ 1366px at 100% zoom (up to 1536px)
+            //   • Fallback: largest possible sidebar at 75% zoom
+            const leftEl      = document.getElementById('left');
+            const leftW       = leftEl ? leftEl.offsetWidth : 220;
+            const maxSidebarW = Math.max(MIN_WIDTH, window.innerWidth - leftW - 660);
 
-        applyViewport();
+            if (maxSidebarW >= 1366) {
+                if (zoomSelect) zoomSelect.value = '1';
+                localStorage.setItem(LS_ZOOM_KEY, '1');
+                setSidebarWidth(Math.min(1536, maxSidebarW));
+            } else {
+                if (zoomSelect) zoomSelect.value = '0.75';
+                localStorage.setItem(LS_ZOOM_KEY, '0.75');
+                setSidebarWidth(maxSidebarW);
+            }
+        } else {
+            // Restore persisted state.
+            const savedZoom = localStorage.getItem(LS_ZOOM_KEY) || '1';
+            if (zoomSelect) zoomSelect.value = savedZoom;
+
+            const savedW = parseInt(localStorage.getItem(LS_WIDTH_KEY) || String(DEFAULT_WIDTH), 10) || DEFAULT_WIDTH;
+            setSidebarWidth(savedW); // clamps + sets vwInput + calls applyViewport
+        }
+
+        // applyViewport() was already called by setSidebarWidth().
 
         if (vwInput) {
             vwInput.addEventListener('change', () => {
