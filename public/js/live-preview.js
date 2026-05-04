@@ -75,6 +75,10 @@
     let globalListenersBound = false;
     let saveFlashObserver    = null;
     let refreshTimer         = null;
+    // True after the first clp:refresh fires for the current page load.
+    // Prevents a second DOM swap + highlight from a late observer or a late resolveAndShow.
+    // Reset to false on every onPageReady so the next navigation-only highlight works.
+    let refreshSent          = false;
 
     // -------------------------------------------------------------------------
     // Entry points
@@ -90,6 +94,9 @@
         if (!urlDisplay) urlDisplay = document.getElementById('clp-url-display');
 
         if (!sidebar || !frame) return;
+
+        // Each navigation is a fresh highlight cycle — allow one highlight per page.
+        refreshSent = false;
 
         // Rehydration must run before isOpen is stamped and before triggerResolve,
         // because it may set frame.src and pre-populate currentArticleId.
@@ -316,10 +323,10 @@
                 } else {
                     // Same URL — content may be stale after a save; allow refreshPreview.
                     frameNeedsReload = true;
-                    // If a refresh timer is pending (save just happened), skip the
-                    // extra clp:highlight — clp:refresh will handle the highlight.
-                    // If no timer is pending (navigation only), highlight immediately.
-                    if (!refreshTimer) sendHighlight();
+                    // Skip if a refresh timer is pending or already fired this page:
+                    // clp:refresh handles the highlight in both cases.
+                    // Only send a standalone highlight for navigation-only (no save).
+                    if (!refreshTimer && !refreshSent) sendHighlight();
                 }
             }
         } catch {
@@ -344,7 +351,8 @@
     }
 
     function refreshPreview() {
-        if (!frameNeedsReload || !currentArticleId) return;
+        if (!frameNeedsReload || !currentArticleId || refreshSent) return;
+        refreshSent      = true;
         frameNeedsReload = false;
 
         // Send clp:refresh to the iframe. The injected frontend script will:
@@ -455,6 +463,9 @@
 
     function handleFormSubmit(e) {
         if (!e.target.querySelector?.('[name="FORM_SUBMIT"]')) return;
+        // Stop watching the outgoing body — we don't want an early refresh
+        // firing before Turbo has swapped in the new page.
+        if (saveFlashObserver) { saveFlashObserver.disconnect(); saveFlashObserver = null; }
         // Persist state before navigation so rehydration can restore it if a
         // full page reload occurs (e.g. Turbo triggers reload on changed assets).
         savePendingState();
