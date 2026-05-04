@@ -73,10 +73,9 @@
     let scrollBehavior = 'smooth';
 
     let globalListenersBound = false;
-    let saveFlashObserver    = null;
     let refreshTimer         = null;
     // True after the first clp:refresh fires for the current page load.
-    // Prevents a second DOM swap + highlight from a late observer or a late resolveAndShow.
+    // Prevents a second DOM swap + highlight from a late observer or late resolveAndShow.
     // Reset to false on every onPageReady so the next navigation-only highlight works.
     let refreshSent          = false;
 
@@ -134,9 +133,6 @@
             // Resizer lives inside the permanent sidebar — bind event listeners once.
             bindResizer();
         }
-
-        // document.body is replaced on every nav; observer must follow it.
-        observeSaveFlash();
 
         // Context from the previous page is stale — resolve for the new URL.
         currentContext = null;
@@ -323,10 +319,11 @@
                 } else {
                     // Same URL — content may be stale after a save; allow refreshPreview.
                     frameNeedsReload = true;
-                    // Skip if a refresh timer is pending or already fired this page:
-                    // clp:refresh handles the highlight in both cases.
-                    // Only send a standalone highlight for navigation-only (no save).
-                    if (!refreshTimer && !refreshSent) sendHighlight();
+                    // Send highlight only for navigation-only (no pending save).
+                    // If a save is pending, clp:refresh (from tryRehydrate) handles the
+                    // highlight. Check localStorage directly — more reliable than refreshTimer
+                    // which may have already fired by the time this async fn returns.
+                    if (!localStorage.getItem(LS_SAVE_KEY) && !refreshSent) sendHighlight();
                 }
             }
         } catch {
@@ -422,12 +419,13 @@
         const iframeLoaded = !!getCleanSrc(); // false when iframe was recreated fresh
 
         if (iframeLoaded) {
-            // Body-swap path: iframe survived, the 900ms refreshPreview timer is
-            // already running. Pre-set the flags so it fires correctly even if the
-            // resolve API hasn't returned yet.
-            if (state.articleId)        currentArticleId   = state.articleId;
+            // Body-swap path: iframe survived. Schedule exactly one refresh from here —
+            // this is the single code path that drives clp:refresh after a save.
+            // 250 ms gives the new backend page time to paint before we swap the article.
+            if (state.articleId)         currentArticleId   = state.articleId;
             if (state.selectors?.length) highlightSelectors = state.selectors;
             frameNeedsReload = true;
+            scheduleRefresh(250);
             // State will be cleared by the clp:refreshed message handler.
             return;
         }
@@ -463,31 +461,9 @@
 
     function handleFormSubmit(e) {
         if (!e.target.querySelector?.('[name="FORM_SUBMIT"]')) return;
-        // Stop watching the outgoing body — we don't want an early refresh
-        // firing before Turbo has swapped in the new page.
-        if (saveFlashObserver) { saveFlashObserver.disconnect(); saveFlashObserver = null; }
-        // Persist state before navigation so rehydration can restore it if a
-        // full page reload occurs (e.g. Turbo triggers reload on changed assets).
+        // Write state to localStorage. The refresh is driven entirely from
+        // tryRehydrate() on the next onPageReady — no timer needed here.
         savePendingState();
-        scheduleRefresh(900);
-    }
-
-    function observeSaveFlash() {
-        if (saveFlashObserver) saveFlashObserver.disconnect();
-
-        saveFlashObserver = new MutationObserver((mutations) => {
-            for (const m of mutations) {
-                for (const node of m.addedNodes) {
-                    if (node.nodeType !== 1) continue;
-                    if (node.classList?.contains('tl_confirm') || node.querySelector?.('.tl_confirm')) {
-                        scheduleRefresh(400);
-                        return;
-                    }
-                }
-            }
-        });
-
-        saveFlashObserver.observe(document.body, { childList: true, subtree: true });
     }
 
     // -------------------------------------------------------------------------
