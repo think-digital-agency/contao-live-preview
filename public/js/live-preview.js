@@ -74,6 +74,7 @@
 
     let globalListenersBound = false;
     let saveFlashObserver    = null;
+    let refreshTimer         = null;
 
     // -------------------------------------------------------------------------
     // Entry points
@@ -314,9 +315,11 @@
                     }, { once: true });
                 } else {
                     // Same URL — content may be stale after a save; allow refreshPreview.
-                    // Page is already loaded, so send highlight immediately.
                     frameNeedsReload = true;
-                    sendHighlight();
+                    // If a refresh timer is pending (save just happened), skip the
+                    // extra clp:highlight — clp:refresh will handle the highlight.
+                    // If no timer is pending (navigation only), highlight immediately.
+                    if (!refreshTimer) sendHighlight();
                 }
             }
         } catch {
@@ -330,6 +333,14 @@
         if (urlDisplay) urlDisplay.textContent = '';
         const openBtn = document.getElementById('clp-open-tab');
         if (openBtn) openBtn.disabled = true;
+    }
+
+    // Schedules exactly one refreshPreview call, cancelling any pending timer.
+    // Both handleFormSubmit and observeSaveFlash go through here so they can't
+    // pile up independent timers that each trigger a DOM swap + highlight.
+    function scheduleRefresh(delay) {
+        clearTimeout(refreshTimer);
+        refreshTimer = setTimeout(() => { refreshTimer = null; refreshPreview(); }, delay);
     }
 
     function refreshPreview() {
@@ -447,7 +458,7 @@
         // Persist state before navigation so rehydration can restore it if a
         // full page reload occurs (e.g. Turbo triggers reload on changed assets).
         savePendingState();
-        setTimeout(refreshPreview, 900);
+        scheduleRefresh(900);
     }
 
     function observeSaveFlash() {
@@ -458,7 +469,7 @@
                 for (const node of m.addedNodes) {
                     if (node.nodeType !== 1) continue;
                     if (node.classList?.contains('tl_confirm') || node.querySelector?.('.tl_confirm')) {
-                        setTimeout(refreshPreview, 400);
+                        scheduleRefresh(400);
                         return;
                     }
                 }

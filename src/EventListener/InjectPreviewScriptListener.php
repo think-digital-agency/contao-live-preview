@@ -53,13 +53,15 @@ class InjectPreviewScriptListener
         //   clp:highlight — scroll to element and flash an orange outline
         //   clp:refresh   — fetch current page, swap article DOM node, then highlight
         return <<<'HTML'
-<style>.clp-highlight{animation:clp-bg-fade 2.25s linear forwards}@keyframes clp-bg-fade{0%{box-shadow:0 0 0 24px rgba(244,124,0,0),inset 0 0 0 9999px rgba(244,124,0,0)}15%{box-shadow:0 0 0 24px rgba(244,124,0,.12),inset 0 0 0 9999px rgba(244,124,0,.12)}85%{box-shadow:0 0 0 24px rgba(244,124,0,.12),inset 0 0 0 9999px rgba(244,124,0,.12)}100%{box-shadow:0 0 0 24px rgba(244,124,0,0),inset 0 0 0 9999px rgba(244,124,0,0)}}</style>
+<style>.clp-highlight{animation:clp-bg-fade 1250ms linear forwards}@keyframes clp-bg-fade{0%{box-shadow:0 0 0 24px rgba(244,124,0,0),inset 0 0 0 9999px rgba(244,124,0,0)}25%{box-shadow:0 0 0 24px rgba(244,124,0,.12),inset 0 0 0 9999px rgba(244,124,0,.12)}75%{box-shadow:0 0 0 24px rgba(244,124,0,.12),inset 0 0 0 9999px rgba(244,124,0,.12)}100%{box-shadow:0 0 0 24px rgba(244,124,0,0),inset 0 0 0 9999px rgba(244,124,0,0)}}</style>
 <script>(function(){
 function findEl(sels){var el=null;for(var i=0;i<sels.length;i++){el=document.querySelector(sels[i]);if(el)break;}return el;}
 function highlight(el,bh){
-  el.scrollIntoView({behavior:bh||'smooth',block:'center'});
+  var rect=el.getBoundingClientRect();
+  var targetY=window.scrollY+rect.top-(window.innerHeight-rect.height)/2;
+  window.scrollTo({top:Math.max(0,targetY),left:0,behavior:bh||'smooth'});
   var t;
-  function hl(){clearTimeout(t);window.removeEventListener('scrollend',hl);el.classList.add('clp-highlight');setTimeout(function(){el.classList.remove('clp-highlight');},2250);}
+  function hl(){clearTimeout(t);window.removeEventListener('scrollend',hl);el.classList.add('clp-highlight');setTimeout(function(){el.classList.remove('clp-highlight');},1250);}
   if((bh||'smooth')==='instant'){hl();}else{if('onscrollend'in window)window.addEventListener('scrollend',hl,{once:true});t=setTimeout(hl,800);}
 }
 window.addEventListener('message',function(e){
