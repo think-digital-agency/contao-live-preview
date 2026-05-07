@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Vendor\ContaoLivePreviewBundle\Service;
+namespace ThinkDigital\ContaoLivePreview\Service;
 
 use Contao\CoreBundle\Framework\ContaoFramework;
 use Contao\System;

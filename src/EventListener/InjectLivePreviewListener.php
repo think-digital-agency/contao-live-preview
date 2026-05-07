@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Vendor\ContaoLivePreviewBundle\EventListener;
+namespace ThinkDigital\ContaoLivePreview\EventListener;
 
 use Contao\CoreBundle\DependencyInjection\Attribute\AsHook;
 use Symfony\Component\Asset\Packages;

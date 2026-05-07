@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Vendor\ContaoLivePreviewBundle;
+namespace ThinkDigital\ContaoLivePreview;
 
 use Symfony\Component\HttpKernel\Bundle\Bundle;
 

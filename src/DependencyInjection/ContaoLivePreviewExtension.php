@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Vendor\ContaoLivePreviewBundle\DependencyInjection;
+namespace ThinkDigital\ContaoLivePreview\DependencyInjection;
 
 use Symfony\Component\Config\FileLocator;
 use Symfony\Component\DependencyInjection\ContainerBuilder;

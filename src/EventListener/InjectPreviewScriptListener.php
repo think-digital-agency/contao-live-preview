@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Vendor\ContaoLivePreviewBundle\EventListener;
+namespace ThinkDigital\ContaoLivePreview\EventListener;
 
 use Symfony\Component\EventDispatcher\Attribute\AsEventListener;
 use Symfony\Component\HttpKernel\Event\ResponseEvent;

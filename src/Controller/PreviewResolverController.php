@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Vendor\ContaoLivePreviewBundle\Controller;
+namespace ThinkDigital\ContaoLivePreview\Controller;
 
 use Contao\CoreBundle\Framework\ContaoFramework;
 use Contao\PageModel;
@@ -10,8 +10,8 @@ use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\Security\Http\Attribute\IsGranted;
-use Vendor\ContaoLivePreviewBundle\Service\LabelCleanerTrait;
-use Vendor\ContaoLivePreviewBundle\Service\PreviewUrlResolverInterface;
+use ThinkDigital\ContaoLivePreview\Service\LabelCleanerTrait;
+use ThinkDigital\ContaoLivePreview\Service\PreviewUrlResolverInterface;
 
 // Route is defined in config/routes.yaml and loaded via ContaoManager\Plugin (RoutingPluginInterface).
 // The #[Route] attribute is intentionally absent — Symfony does not auto-scan bundle controllers.

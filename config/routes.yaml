@@ -1,6 +1,6 @@
 contao_live_preview_resolve:
     path: /contao/live-preview/resolve
-    controller: Vendor\ContaoLivePreviewBundle\Controller\PreviewResolverController
+    controller: ThinkDigital\ContaoLivePreview\Controller\PreviewResolverController
     methods: [GET]
     defaults:
         _scope: backend

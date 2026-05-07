@@ -1,18 +1,26 @@
 {
-    "name": "vendor/contao-live-preview-bundle",
+    "name": "think-digital-agency/contao-live-preview",
     "type": "contao-bundle",
-    "description": "Adds a context-aware live frontend preview sidebar to the Contao 5 backend",
-    "license": "proprietary",
+    "description": "Context-aware live frontend preview sidebar for the Contao 5 backend",
+    "keywords": ["contao", "contao-bundle", "contao-extension", "preview", "backend"],
+    "homepage": "https://github.com/think-digital-agency/contao-live-preview",
+    "license": "LGPL-3.0-or-later",
+    "authors": [
+        {
+            "name": "Think Digital Agency",
+            "homepage": "https://think-digital.agency"
+        }
+    ],
     "require": {
         "php": "^8.2",
         "contao/core-bundle": "^5.3"
     },
     "autoload": {
         "psr-4": {
-            "Vendor\\ContaoLivePreviewBundle\\": "src/"
+            "ThinkDigital\\ContaoLivePreview\\": "src/"
         }
     },
     "extra": {
-        "contao-manager-plugin": "Vendor\\ContaoLivePreviewBundle\\ContaoManager\\Plugin"
+        "contao-manager-plugin": "ThinkDigital\\ContaoLivePreview\\ContaoManager\\Plugin"
     }
 }

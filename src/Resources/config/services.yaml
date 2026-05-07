@@ -4,7 +4,7 @@ services:
         autoconfigure: true
         public: false
 
-    Vendor\ContaoLivePreviewBundle\:
+    ThinkDigital\ContaoLivePreview\:
         resource: '../../*'
         exclude:
             - '../../ContaoManager/'
@@ -13,5 +13,5 @@ services:
 
     # Explicit alias so third-party bundles can override the resolver by
     # rebinding this interface in their own services.yaml.
-    Vendor\ContaoLivePreviewBundle\Service\PreviewUrlResolverInterface:
-        alias: Vendor\ContaoLivePreviewBundle\Service\PreviewUrlResolver
+    ThinkDigital\ContaoLivePreview\Service\PreviewUrlResolverInterface:
+        alias: ThinkDigital\ContaoLivePreview\Service\PreviewUrlResolver

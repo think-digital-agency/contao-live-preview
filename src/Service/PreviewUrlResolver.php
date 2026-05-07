@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Vendor\ContaoLivePreviewBundle\Service;
+namespace ThinkDigital\ContaoLivePreview\Service;
 
 use Doctrine\DBAL\Connection;
 

@@ -2,13 +2,13 @@
 
 declare(strict_types=1);
 
-namespace Vendor\ContaoLivePreviewBundle\EventListener;
+namespace ThinkDigital\ContaoLivePreview\EventListener;
 
 use Contao\ContentModel;
 use Contao\CoreBundle\DependencyInjection\Attribute\AsHook;
 use Contao\CoreBundle\Framework\ContaoFramework;
 use Symfony\Component\HttpFoundation\RequestStack;
-use Vendor\ContaoLivePreviewBundle\Service\LabelCleanerTrait;
+use ThinkDigital\ContaoLivePreview\Service\LabelCleanerTrait;
 
 /**
  * Injects data-contao-table="tl_content", data-contao-id="{N}", and
