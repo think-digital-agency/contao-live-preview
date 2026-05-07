@@ -6,23 +6,20 @@ namespace Vendor\ContaoLivePreviewBundle\Controller;
 
 use Contao\CoreBundle\Framework\ContaoFramework;
 use Contao\PageModel;
-use Contao\System;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
-use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\Security\Http\Attribute\IsGranted;
+use Vendor\ContaoLivePreviewBundle\Service\LabelCleanerTrait;
 use Vendor\ContaoLivePreviewBundle\Service\PreviewUrlResolverInterface;
 
-#[Route(
-    '/contao/live-preview/resolve',
-    name: 'contao_live_preview_resolve',
-    defaults: ['_scope' => 'backend', '_token_check' => false],
-    methods: ['GET'],
-)]
+// Route is defined in config/routes.yaml and loaded via ContaoManager\Plugin (RoutingPluginInterface).
+// The #[Route] attribute is intentionally absent — Symfony does not auto-scan bundle controllers.
 #[IsGranted('ROLE_USER')]
 class PreviewResolverController extends AbstractController
 {
+    use LabelCleanerTrait;
+
     public function __construct(
         private readonly PreviewUrlResolverInterface $resolver,
         private readonly ContaoFramework $framework,
@@ -65,7 +62,7 @@ class PreviewResolverController extends AbstractController
         $contentElementId    = $pageData['contentElementId']   ?? null;
         $contentElementType  = (string) ($pageData['contentElementType'] ?? '');
         $contentElementLabel = '' !== $contentElementType
-            ? $this->resolveContentElementLabel($contentElementType)
+            ? $this->resolveLabel($contentElementType, $this->framework)
             : '';
 
         // Article-level selectors — used for DOM swap (clp:refresh) and as secondary
@@ -85,7 +82,7 @@ class PreviewResolverController extends AbstractController
         // Primary highlight selectors — CE selector when context is tl_content,
         // otherwise same as articleSelectors. JS scrolls to the primary target.
         // When CE + article differ, the frontend highlights both simultaneously:
-        // CE gets the light-blue background, article gets the outline + badge.
+        // CE gets the solid blue outline, article gets dashed blue + badge.
         $highlightSelectors = \is_int($contentElementId) && $contentElementId > 0
             ? ['[data-contao-table="tl_content"][data-contao-id="' . $contentElementId . '"]']
             : $articleSelectors;
@@ -113,42 +110,8 @@ class PreviewResolverController extends AbstractController
         };
     }
 
-    /**
-     * Uses Contao's PageModel to build the correct absolute frontend URL.
-     * findWithDetails() walks up the page hierarchy to inherit language, urlPrefix,
-     * domain etc. — avoiding the need to manually traverse tl_page to the root.
-     */
-    private function resolveContentElementLabel(string $type): string
-    {
-        /** @var System $system */
-        $system = $this->framework->getAdapter(System::class);
-        $system->loadLanguageFile('modules');
-
-        // Fall back to '' rather than the raw type key — unknown types are handled
-        // gracefully in JS (getCeLabel reads data-contao-label from the DOM instead).
-        return $this->cleanLabel((string) ($GLOBALS['TL_LANG']['CTE'][$type][0] ?? ''));
-    }
-
-    /**
-     * Strips common Contao element suffix words that add no value in a badge.
-     * Handles colon-separated ("SimpleGrid: Wrapper Start") and space-separated
-     * ("Akkordeon Anfang") forms.
-     */
-    private function cleanLabel(string $label): string
-    {
-        $label = (string) preg_replace(
-            '/\s*:?\s*\b(?:Wrapper\s+)?(?:Anfang|Start|Ende|End)\b\s*$|:?\s*\bWrapper\b\s*$/i',
-            '',
-            $label,
-        );
-
-        return trim((string) preg_replace('/\s{2,}/', ' ', $label));
-    }
-
     private function buildPreviewUrl(int $pageId): string
     {
-        // framework already initialized in __invoke
-
         /** @var \Contao\Model\Registry $pageAdapter */
         $pageAdapter = $this->framework->getAdapter(PageModel::class);
 

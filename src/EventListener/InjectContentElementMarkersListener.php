@@ -7,8 +7,8 @@ namespace Vendor\ContaoLivePreviewBundle\EventListener;
 use Contao\ContentModel;
 use Contao\CoreBundle\DependencyInjection\Attribute\AsHook;
 use Contao\CoreBundle\Framework\ContaoFramework;
-use Contao\System;
 use Symfony\Component\HttpFoundation\RequestStack;
+use Vendor\ContaoLivePreviewBundle\Service\LabelCleanerTrait;
 
 /**
  * Injects data-contao-table="tl_content", data-contao-id="{N}", and
@@ -16,12 +16,13 @@ use Symfony\Component\HttpFoundation\RequestStack;
  * page is loaded inside the live-preview iframe (?_clp=1).
  *
  * Works for legacy ContentElement subclasses (including RSCE). Twig-first
- * content elements registered via #[AsContentElement] bypass this hook.
+ * content elements registered via #[AsContentElement] bypass this hook and are
+ * handled by InjectTwigContentElementMarkersListener instead.
  */
 #[AsHook('getContentElement')]
 class InjectContentElementMarkersListener
 {
-    private bool $langLoaded = false;
+    use LabelCleanerTrait;
 
     public function __construct(
         private readonly RequestStack $requestStack,
@@ -46,7 +47,7 @@ class InjectContentElementMarkersListener
             return $buffer;
         }
 
-        $label = $this->resolveLabel((string) ($element->type ?? ''));
+        $label = $this->resolveLabel((string) ($element->type ?? ''), $this->framework);
 
         return preg_replace(
             '/(<[a-z][a-z0-9]*\b)/i',
@@ -54,32 +55,5 @@ class InjectContentElementMarkersListener
             $buffer,
             1,
         ) ?? $buffer;
-    }
-
-    private function resolveLabel(string $type): string
-    {
-        if ('' === $type) {
-            return '';
-        }
-
-        if (!$this->langLoaded) {
-            $this->langLoaded = true;
-            /** @var System $system */
-            $system = $this->framework->getAdapter(System::class);
-            $system->loadLanguageFile('modules');
-        }
-
-        return $this->cleanLabel((string) ($GLOBALS['TL_LANG']['CTE'][$type][0] ?? ''));
-    }
-
-    private function cleanLabel(string $label): string
-    {
-        $label = (string) preg_replace(
-            '/\s*:?\s*\b(?:Wrapper\s+)?(?:Anfang|Start|Ende|End)\b\s*$|:?\s*\bWrapper\b\s*$/i',
-            '',
-            $label,
-        );
-
-        return trim((string) preg_replace('/\s{2,}/', ' ', $label));
     }
 }
