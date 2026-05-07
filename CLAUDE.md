@@ -4,7 +4,7 @@
 
 **Package:** `vendor/contao-live-preview-bundle`
 **Target:** Contao 5.5+ / Symfony 7.x
-**Purpose:** Adds a collapsible, context-aware live frontend preview sidebar to the Contao 5 backend. When an editor opens a page, article, or content element, an iframe on the right side shows the corresponding frontend page. Saving a record triggers an article-level DOM swap in the iframe — no full reload, scroll position stays intact.
+**Purpose:** Adds a collapsible, context-aware live frontend preview sidebar to the Contao 5 backend. When an editor opens a page, article, or content element, an iframe on the right side shows the corresponding frontend page. Saving a record triggers an article-level DOM swap in the iframe — no full reload, scroll position stays intact. Any `[data-contao-table]` element in the iframe can be hovered to see a fuchsia badge with a direct edit link, or clicked to jump straight to that record in the backend.
 
 **Location:** `packages/contao-live-preview-bundle/` inside the Design+ theme project. Installed via a `path` Composer repository.
 
@@ -14,18 +14,24 @@
 
 | Decision | Choice | Rationale |
 |---|---|---|
-| JS | Vanilla IIFE, no build step | Keeps the bundle dependency-free and easy to drop into any Contao project |
-| Injection | `outputBackendTemplate` hook on `be_main` | Tightly scoped — never fires for popups, pickers, or login |
-| Popup exclusion | Server-side check: `?popup=1` / `?picker` | Cleanest gate; no client-side fallback needed |
-| Sidebar persistence | `data-turbo-permanent` on `#clp-right` | Turbo moves the sidebar (with live iframe) to every new body — zero white-flash on navigation |
-| Flash prevention | `turbo:before-render` pre-stamps `clp-open` on incoming body | Without this, `body.clp-open` is absent for one paint after body swap |
-| Preview URL | `PageModel::findWithDetails()->getAbsoluteUrl()` | Inherits urlPrefix, language, and domain from the root page hierarchy |
-| Partial refresh after save | `clp:refresh` postMessage → frontend self-fetch + DOMParser swap | No full iframe reload — scroll position preserved, only the edited article node is replaced |
-| Rehydration after full reload | `clp_pending_save` localStorage state | Restores iframe URL + scroll + highlight if Turbo triggers a full page reload (e.g. after deployment with changed assets) |
-| Resize | Pointer Events + `setPointerCapture` | Receives `pointermove`/`pointerup` even when cursor leaves the browser window |
-| Extensibility | `PreviewUrlResolverInterface` | Third-party bundles alias the interface to add support for news, events, custom models |
-| Highlight injection | `?_clp=1` + `KernelEvents::RESPONSE` listener | Frontend script injected ephemerally into the response — zero impact on normal page output |
-| Selection indicator | Persistent blue outline + floating title badge | Framer-style: `outline: 2px solid #2563eb` on `.clp-sel`, `position: absolute` badge pinned to body at article's top-left; cleared on next highlight |
+| JS | Vanilla IIFE, no build step | Dependency-free; works in any Contao project without npm |
+| Injection | `outputBackendTemplate` hook on `be_main` | Scoped — never fires for popups, pickers, or login |
+| Popup exclusion | Server-side: `?popup=1` / `?picker` | Cleanest gate; no client-side fallback needed |
+| Sidebar persistence | `data-turbo-permanent` on `#clp-right` | Turbo moves sidebar (with live iframe) to every new body — zero flash |
+| Flash prevention | `turbo:before-render` pre-stamps `clp-open` on incoming body | Prevents one-paint sidebar-hidden flash after body swap |
+| Preview URL | `PageModel::findWithDetails()->getAbsoluteUrl()` | Inherits urlPrefix, language, domain from root page hierarchy |
+| Partial refresh | `clp:refresh` → self-fetch + DOMParser swap | No iframe reload — scroll preserved, only article node replaced |
+| Rehydration | `clp_pending_save` localStorage | Restores scroll + highlight after Turbo full-reload (asset fingerprint change) |
+| Resize | Pointer Events + `setPointerCapture` | `pointermove`/`pointerup` received even when cursor leaves window |
+| Extensibility | `PreviewUrlResolverInterface` | Third-party bundles alias the interface to add custom table support |
+| Highlight injection | `?_clp=1` + `KernelEvents::RESPONSE` | Frontend script injected ephemerally — zero impact on normal page output |
+| Article markers | `parseFrontendTemplate` hook | Auto-injects `data-contao-*` on article wrapper for any theme |
+| CE markers + label | `getContentElement` hook | Auto-injects `data-contao-*` + `data-contao-label` on CE wrapper |
+| Active highlight | Solid/dashed blue outline + badge | CE solid blue; article dashed blue in dual mode |
+| Hover highlight | Fuchsia dashed outline + badge | Any `[data-contao-table]` element; edit icon navigates backend |
+| Edit navigation | `clp:edit` postMessage → `Turbo.visit()` | Badge edit icon → backend navigates to article content list or CE edit form |
+| CE label source | DOM-first: `data-contao-label` attribute | Frontend hook context has all language files; API fallback unreliable for 3rd-party CEs |
+| Visual target | `clpVisTarget()` — col-* unwrap | Outline on inner child when grid wrapper has exactly one child (Design+ pattern) |
 
 ---
 
@@ -37,14 +43,16 @@
 | `src/DependencyInjection/ContaoLivePreviewExtension.php` | Loads `services.yaml` |
 | `src/ContaoManager/Plugin.php` | Registers bundle + routes with Contao Manager |
 | `src/EventListener/InjectLivePreviewListener.php` | `outputBackendTemplate` hook — injects CSS/JS/sidebar into `be_main`; skips popups |
-| `src/EventListener/InjectPreviewScriptListener.php` | `KernelEvents::RESPONSE` — injects highlight+refresh script into frontend pages when `?_clp=1` |
+| `src/EventListener/InjectPreviewScriptListener.php` | `KernelEvents::RESPONSE` — injects highlight + hover + link-intercept script before `</body>` when `?_clp=1` |
+| `src/EventListener/InjectArticleMarkersListener.php` | `parseFrontendTemplate` hook — auto-injects `data-contao-table`/`data-contao-id` on article wrapper; skips if theme already provides them |
+| `src/EventListener/InjectContentElementMarkersListener.php` | `getContentElement` hook — auto-injects `data-contao-table`/`data-contao-id`/`data-contao-label` on CE wrapper; covers legacy `ContentElement` + RSCE |
 | `src/Service/PreviewUrlResolverInterface.php` | Extension point: implement and alias to add custom table support |
-| `src/Service/PreviewUrlResolver.php` | DBAL chain: `tl_content → tl_article → tl_page` |
-| `src/Controller/PreviewResolverController.php` | `GET /contao/live-preview/resolve` → `{pageId, articleId, pageAlias, previewUrl, highlightSelectors}` |
+| `src/Service/PreviewUrlResolver.php` | DBAL chain: `tl_content → tl_article → tl_page`; reads `type` for CE label resolution |
+| `src/Controller/PreviewResolverController.php` | `GET /contao/live-preview/resolve` → full JSON context incl. `highlightSelectors`, `articleSelectors`, `contentElementLabel` |
 | `src/Resources/config/services.yaml` | Autowired services + explicit interface alias |
 | `config/routes.yaml` | Route for the resolve endpoint |
 | `templates/backend/live_preview_sidebar.html.twig` | `<aside data-turbo-permanent>` with resizer, toolbar, iframe |
-| `public/js/live-preview.js` | Context detection, resolve, iframe management, save detection, resize |
+| `public/js/live-preview.js` | Context detection, resolve, iframe management, save detection, resize, `clp:edit` handler |
 | `public/css/live-preview.css` | Flex layout overrides, sidebar, toolbar, toggle button, responsive |
 
 ---
@@ -60,7 +68,6 @@ Turbo navigation (or hard load)
         ▼
       onPageReady()
         re-injects #tmenu toggle button
-        observes new document.body for .tl_confirm
         resets currentContext → triggerResolve()
         │
         ▼
@@ -73,7 +80,7 @@ Turbo navigation (or hard load)
                                   │
                                   ▼
                             PreviewResolverController
-                            • releases session lock immediately (session.save())
+                            • releases session lock (session.save())
                             • delegates to PreviewUrlResolverInterface::resolve()
                                   │
                                   ▼
@@ -81,53 +88,89 @@ Turbo navigation (or hard load)
                             tl_content → pid → tl_article → pid → tl_page
                                   │
                                   ▼
-                            buildPreviewUrl()
+                            buildPreviewUrl() + resolveContentElementLabel()
                             PageModel::findWithDetails()->getAbsoluteUrl()
-                            walks up to nearest routable page type
+                            cleanLabel() strips Anfang/Start/Ende/Wrapper suffixes
                                   │
                                   ▼
-                            JSON { pageId, articleId, pageAlias, previewUrl, highlightSelectors }
+                            JSON {
+                              pageId, pageAlias, previewUrl,
+                              articleId, articleTitle,
+                              highlightSelectors, articleSelectors,
+                              contentElementId, contentElementType, contentElementLabel
+                            }
         │
-        ├── if URL changed  → frame.src = previewUrl + ?_clp=1 (fresh load)
-        │                      → on load: frameNeedsReload=true, sendHighlight() via postMessage
-        └── if URL same     → frameNeedsReload=true, sendHighlight() immediately
+        ├── URL changed  → frame.src = previewUrl + ?_clp=1
+        │                  → on load: frameNeedsReload=true, sendHighlight()
+        └── URL same     → frameNeedsReload=true, sendHighlight() immediately
+
+sendHighlight()
+  postMessage clp:highlight → {
+    selectors, articleSelectors, scrollBehavior,
+    label, articleLabel,
+    articleId, contentElementId          ← IDs for edit-icon click targets
+  }
+
+clp:highlight (injected frontend script)
+  • findEl(selectors) → CE element (or article if context is tl_article)
+  • findEl(articleSelectors) → article element
+  • dual mode (CE ≠ article):
+      CE → clpVisTarget → solid blue outline + CE badge (getCeLabel reads data-contao-label)
+      article → clpVisTarget → dashed blue outline + ARTIKEL badge
+  • single mode: one solid outline + one badge
 
 User saves (form submit)
   │
-  ├── handleFormSubmit()      → setTimeout(refreshPreview, 900ms)
-  └── observeSaveFlash()      → detects .tl_confirm → setTimeout(refreshPreview, 400ms)
+  └── handleFormSubmit() → savePendingState() → tryRehydrate() on next onPageReady
 
 refreshPreview()
-  • guards: frameNeedsReload must be true AND currentArticleId must be set
-  • sends postMessage({ type: 'clp:refresh', articleId, selectors }) to iframe
-  • NO iframe src change — scroll position preserved natively
+  postMessage clp:refresh → { articleId, selectors: articleSelectors, label: 'ARTIKEL' }
 
-clp:refresh handler (injected frontend script, ?_clp=1)
-  1. fetch(window.location.href)           — same-origin, no CORS
-  2. DOMParser parses full page HTML
-  3. find [data-contao-table="tl_article"][data-contao-id="{articleId}"] in parsed doc
-  4. replace live DOM node with fresh node
-  5. restore scroll position, apply highlight animation
-  6. post clp:refreshed back to parent window
+clp:refresh (frontend)
+  1. fetch(window.location.href)
+  2. DOMParser — iterate selector chain until match in both docs
+  3. live.replaceWith(fresh) — restore scroll — highlight — post clp:refreshed
+
+Badge edit icon click (active or hover badge)
+  postMessage clp:edit → { table, id }
+  backend: Turbo.visit(?do=article&table=tl_content[&act=edit]&id=N)
+
+Hover (frontend)
+  mouseover → closest [data-contao-table] → clpVisTarget
+    → fuchsia dashed outline + fuchsia badge (getCeLabel)
+  mouseout  → clear when cursor leaves container element OR badge
+  click a[href] → intercept → append ?_clp=1 → navigate (preserves script across pages)
 ```
 
 ### Frontend DOM Requirements
 
-The partial refresh mechanism requires the frontend article template to emit:
+The partial refresh and hover highlighting require `data-contao-*` attributes on wrappers:
+
 ```html
+<!-- Article wrapper -->
 <div data-contao-table="tl_article" data-contao-id="42" id="article-42" ...>
+  <!-- Content element wrapper -->
+  <div data-contao-table="tl_content" data-contao-id="77" data-contao-label="Icon Liste" ...>
 ```
 
-This is provided by `templates/theme-design/mod_article.html.twig` (Design+ theme).
-For other themes, add these attributes to the article wrapper in `mod_article.html.twig`.
+**Who provides them:**
+
+| Attributes | Provider | Notes |
+|---|---|---|
+| `tl_article` data-attrs | `InjectArticleMarkersListener` | All themes; skipped if theme already provides them |
+| `tl_article` data-attrs | Design+ `mod_article.html.twig` | Direct template approach; hook skips via `str_contains` guard |
+| `tl_content` data-attrs + label | `InjectContentElementMarkersListener` | Legacy `ContentElement` subclasses + RSCE; Twig-first `#[AsContentElement]` not covered |
+
+Fallback chain when data-attrs absent: `#article-{id}` → `#article-{alias}` → `#{cssId}`. DOM-swap skipped when no stable anchor exists; highlight via CSS-ID still works.
 
 ### Message Types (postMessage)
 
-| Type | Direction | Payload | Purpose |
+| Type | Direction | Key Payload Fields | Purpose |
 |---|---|---|---|
-| `clp:highlight` | backend → frontend | `{ selectors, scrollBehavior, label }` | Scroll to element, apply persistent blue outline + article title badge |
-| `clp:refresh` | backend → frontend | `{ articleId, selectors, label }` | Fetch page, swap article DOM node, then highlight |
-| `clp:refreshed` | frontend → backend | `{ articleId }` | Acknowledgement after DOM swap completes |
+| `clp:highlight` | backend → frontend | `selectors`, `articleSelectors`, `scrollBehavior`, `label`, `articleLabel`, `articleId`, `contentElementId` | Scroll + dual/single outline + badges |
+| `clp:refresh` | backend → frontend | `articleId`, `selectors`, `label` | Self-fetch + article DOM swap + highlight |
+| `clp:refreshed` | frontend → backend | `articleId` | Acknowledgement after DOM swap (or fetch error) |
+| `clp:edit` | frontend → backend | `table`, `id` | Badge edit icon clicked — navigate backend to record |
 
 ---
 
@@ -140,7 +183,7 @@ Implement `PreviewUrlResolverInterface` in your bundle and alias it:
 class ExtendedPreviewUrlResolver implements PreviewUrlResolverInterface
 {
     public function __construct(
-        private readonly PreviewUrlResolver $inner, // the built-in resolver
+        private readonly PreviewUrlResolver $inner,
         private readonly Connection $db,
     ) {}
 
@@ -178,22 +221,33 @@ if (doV === 'news' && id > 0) {
 
 - **`cache:warmup` required** after any template/config change. `cache:clear` alone does not register the `@ContaoLivePreview` Twig namespace.
 - **Session lock**: the resolve controller calls `$session->save()` immediately to release the PHP file-session lock, preventing Turbo navigation requests from blocking behind the AJAX call.
-- **Popup exclusion**: checked server-side via `?popup=1` and `?picker`. If Contao adds new popup conventions in future versions, add them to `InjectLivePreviewListener`.
+- **Popup exclusion**: checked server-side via `?popup=1` and `?picker`. If Contao adds new popup conventions, add them to `InjectLivePreviewListener`.
 - **Asset symlink**: Symfony derives the symlink name as `contaolivepreview` (lowercase, no separators). CSS/JS paths in the listener use this name. Run `bin/console assets:install` after first install.
 - **Non-routable pages**: `buildPreviewUrl()` walks up the ancestor tree when it encounters `error_404`, `folder`, or `root` page types.
-- **clp:refresh and frontend caching**: `refreshPreview()` sends a `clp:refresh` postMessage; the frontend then fetches `window.location.href` (which includes `?_clp=1`). If Contao's page cache has not been invalidated by the save yet, the fetched HTML may be stale. Contao normally clears affected page caches on save — if a CDN or reverse proxy caches frontend pages aggressively, the DOM swap may show stale content.
-- **tl_page context**: when editing a page (no article), `currentArticleId` is null. `refreshPreview()` returns early — no DOM swap, no visual update. This is intentional: page-level edits (metadata, title, layout) affect the whole page and there's no stable article node to swap.
-- **Full page reload detection**: `getCleanSrc()` returns `''` when the iframe is empty (fresh after full reload) and a non-empty URL when it survived a Turbo body-swap. `tryRehydrate()` uses this to distinguish the two paths.
-- **`clp_pending_save` TTL**: state expires after 30 seconds. If the user saves and then navigates for more than 30 seconds before the page finishes loading, the state is discarded.
+- **clp:refresh stale cache**: the frontend fetches `window.location.href` after save. If a CDN or reverse proxy caches frontend pages aggressively and hasn't invalidated yet, the DOM swap may show stale content.
+- **tl_page context**: `currentArticleId` is null → `refreshPreview()` returns early. Page-level edits require a manual sidebar reload.
+- **Full page reload detection**: `getCleanSrc()` returns `''` on iframe empty (full reload) vs. non-empty (survived Turbo body-swap). `tryRehydrate()` uses this to pick the correct rehydration path.
+- **`clp_pending_save` TTL**: expires after 30 s. State discarded if backend navigation takes longer.
+- **Hover + Twig-first CEs**: CEs registered with `#[AsContentElement]` bypass the `getContentElement` hook — they get no `data-contao-table` attr and are invisible to hover highlighting.
+- **CE label backend vs. frontend**: the resolve controller may not find a CTE label for third-party CEs if their language file isn't loaded in backend context. The controller returns `''` (never the raw type key); the frontend falls back to `data-contao-label` from the DOM, which is always correct because the hook runs in fully-bootstrapped frontend context.
+- **Badge reposition**: badges are `position:absolute` in `<body>` and are repositioned on `window.resize` (triggered by sidebar drag or zoom change). They do NOT reposition on scroll — `scrollY + getBoundingClientRect().top` is document-absolute and stays correct.
+- **Visual target (col-* unwrap)**: `clpVisTarget()` checks for `col-*` class + single child. If a grid wrapper has multiple children (edge case), the wrapper itself is used as visual target — no data is lost.
 
 ---
 
 ## Backlog
 
 - [ ] Support for `do=news`, `do=calendar` etc. — via the `PreviewUrlResolverInterface` extension point
-- [x] Frontend element scroll + highlight: `?_clp=1` triggers `InjectPreviewScriptListener` which injects a `postMessage` listener + CSS animation. Backend sends `{ type: 'clp:highlight', selectors: [...] }`. Frontend scrolls and fades-out an orange outline on the article. Content elements scroll to their parent article. Primary selector uses `data-contao-table`/`data-contao-id` (stable), CSS-ID selectors kept as fallback.
-- [x] Article-level partial refresh: save triggers `clp:refresh` postMessage → frontend self-fetch + DOMParser swap, no full iframe reload, scroll position preserved. Requires `data-contao-table="tl_article"` + `data-contao-id` on the article wrapper (emitted by Design+ `mod_article.html.twig`).
-- [ ] Per-content-element highlight: needs theme to emit `data-contao-table="tl_content"` + `data-contao-id` on `ce_*` wrappers; `refreshPreview` would then swap at content-element granularity
 - [ ] Per-user sidebar width stored in `tl_user` (currently localStorage only)
 - [ ] `FrontendPreviewAuthenticator` integration to show unpublished content reliably
-- [ ] **Open-source release** — rename namespace `Vendor\ContaoLivePreviewBundle` → `ThinkDigital\ContaoLivePreview`, package name → `think-digital-agency/contao-live-preview`, add LICENSE (LGPL-3.0), README.md, remove CLAUDE.md; extract to own GitHub repo (`think-digital-agency/contao-live-preview`) via `git filter-repo --subdirectory-filter`; register on Packagist with webhook; Contao Extension Store picks up automatically. Full step-by-step plan in session history (2026-05-04).
+- [ ] Hover + Twig-first `#[AsContentElement]` CEs — these bypass `getContentElement`; would need a separate Twig extension or response listener to inject data attributes
+- [ ] **Open-source release** — rename namespace `Vendor\ContaoLivePreviewBundle` → `ThinkDigital\ContaoLivePreview`, package name → `think-digital-agency/contao-live-preview`, add LICENSE (LGPL-3.0), README.md, remove CLAUDE.md; extract to own GitHub repo via `git filter-repo --subdirectory-filter`; register on Packagist; Contao Extension Store picks up automatically.
+- [x] Article-level partial refresh with selector chain fallback (any theme)
+- [x] Theme-independent marker injection via `parseFrontendTemplate` + `getContentElement` hooks
+- [x] Dual-mode CE + article highlighting (solid/dashed blue, separate badges)
+- [x] Edit badges with pencil icon — click navigates backend to article content list or CE edit form
+- [x] Interactive hover highlighting — fuchsia dashed outline + badge for any `[data-contao-table]` element
+- [x] CE type labels from `data-contao-label` DOM attribute (DOM-first, always correct)
+- [x] Visual target unwrapping for `col-*` single-child grid wrappers (Design+ pattern)
+- [x] Link intercept — `?_clp=1` preserved across iframe navigation
+- [x] Badge reposition on sidebar resize and zoom change

@@ -101,26 +101,15 @@ After a backend save, the preview must show the updated frontend content. The pr
 **Decision:**
 Replace full iframe reload with an article-level DOM swap:
 1. Backend sends `{ type: 'clp:refresh', articleId, selectors }` via postMessage
-2. The injected frontend script (from `InjectPreviewScriptListener`) handles it:
-   - `fetch(window.location.href)` — same-origin, no CORS required, credentials included
-   - `DOMParser` parses the full HTML response (no execution of scripts)
-   - Extracts `[data-contao-table="tl_article"][data-contao-id="{articleId}"]` from the parsed doc
-   - Replaces the live DOM node with `Element.replaceWith()`
-   - Restores scroll position, applies highlight animation
-   - Posts `clp:refreshed` acknowledgement back to the backend
-3. The frontend article template (`mod_article.html.twig`) must emit `data-contao-table` + `data-contao-id` attributes
+2. The injected frontend script handles it: `fetch(window.location.href)` → `DOMParser` → iterate selector chain until a match exists in both docs → `live.replaceWith(fresh)` → restore scroll → highlight → post `clp:refreshed`
 
-**Why self-fetch (not a server-side fragment endpoint):**
-The iframe is already loaded on the correct frontend origin. `fetch(window.location.href)` is a trivially same-origin request — no CORS, no auth tokens, no extra server route needed. A dedicated fragment endpoint would require rendering the article in isolation outside the normal Contao frontend pipeline, which is fragile and complex.
+The selector chain (`data-contao-*` → `#article-{id}` → `#{cssId}`) ensures the swap works regardless of which selectors the theme provides.
 
 **Consequences:**
-- (+) No iframe reload — no flicker, no asset re-fetching
-- (+) Scroll position preserved without any pre-submit capture logic
-- (+) No new server-side endpoint needed
-- (+) Falls through gracefully: if `[data-contao-id]` is not found in fetched doc, DOM is unchanged
-- (-) Fetches a full page HTML response (typically 20–100 KB) even though only the article HTML is used — acceptable for a backend-only tool
-- (-) Depends on `data-contao-table`/`data-contao-id` in the theme template; themes without these attributes fall back to CSS-ID-based highlight only (no DOM swap)
-- (-) `tl_page` edits (no `articleId`) do not trigger any visual refresh — the editor must manually reload the sidebar if they want to see page-level changes (metadata, title, layout)
+- (+) No iframe reload — no flicker, no asset re-fetching, scroll position preserved
+- (+) No new server-side endpoint — trivially same-origin
+- (-) Fetches a full page HTML response even though only the article node is used (acceptable for a backend-only tool)
+- (-) `tl_page` edits (no `articleId`) do not trigger a visual refresh
 
 ---
 
@@ -130,29 +119,152 @@ The iframe is already loaded on the correct frontend origin. `fetch(window.locat
 **Status:** Accepted
 
 **Context:**
-Contao 5 backend uses `@hotwired/turbo` for navigation. After form saves, Turbo normally performs a body-swap (Turbo Drive), which preserves `data-turbo-permanent` elements including the live preview sidebar and its iframe. The `refreshPreview()` mechanism (postMessage `clp:refresh`) handles this path correctly.
-
-However, all backend CSS/JS assets carry `data-turbo-track="reload"`. If any asset URL changes (e.g. after a deployment with fingerprinted assets), Turbo triggers a **full page reload** instead of a body-swap. In that case, the iframe is destroyed and recreated empty — losing scroll position, `currentArticleId`, and any in-flight `refreshPreview()` timer (cancelled by the browser navigation).
-
-Additionally, there is a timing race condition in the body-swap path: the 900ms `refreshPreview()` timer may fire before `resolveAndShow()` has returned, leaving `frameNeedsReload = false` and causing the refresh to silently do nothing.
+Contao 5 backend uses `@hotwired/turbo` for navigation. After form saves, Turbo normally performs a body-swap (Turbo Drive), which preserves `data-turbo-permanent` elements including the live preview sidebar and its iframe. However, all backend CSS/JS assets carry `data-turbo-track="reload"`. If any asset URL changes (e.g. after a deployment with fingerprinted assets), Turbo triggers a **full page reload** instead of a body-swap, destroying the iframe.
 
 **Decision:**
 Add a two-phase state persistence mechanism:
-
-1. **Before save** (`handleFormSubmit`): write `{ articleId, iframeUrl, scrollX, scrollY, selectors, ts }` to `localStorage['clp_pending_save']`.
+1. **Before save** (`handleFormSubmit`): write full context state to `localStorage['clp_pending_save']`.
 2. **After any page init** (`onPageReady` → `tryRehydrate`): read and consume the state.
-   - `getCleanSrc() !== ''` (body-swap): pre-set `currentArticleId`, `highlightSelectors`, `frameNeedsReload = true` so the 900ms timer fires correctly regardless of resolve latency. State cleared by `clp:refreshed` message.
-   - `getCleanSrc() === ''` (full reload): load saved `iframeUrl`, restore scroll position on load, fire highlight. State cleared immediately.
+   - Body-swap path: pre-set state vars + `frameNeedsReload = true` so the refresh timer fires correctly
+   - Full-reload path: load saved `iframeUrl`, restore scroll on load, fire highlight
 
-State expires after 30 seconds to prevent stale rehydrations.
-
-**Why localStorage and not sessionStorage:**
-`sessionStorage` is per-tab and survives reloads, but is cleared when the tab is closed. `localStorage` provides the same persistence within a reload cycle. Either would work; `localStorage` is consistent with the other `clp_*` keys already used.
+State expires after 30 seconds. Cleared by `clp:refreshed` message.
 
 **Consequences:**
-- (+) Scroll position and highlight are restored after both body-swap AND full reload
-- (+) Fixes timing race: `frameNeedsReload = true` is set before `resolveAndShow()` completes
-- (+) Zero server-side changes — pure client-side state machine
-- (+) 30-second TTL prevents stale state from interfering with unrelated navigations
-- (-) `savePendingState()` reads `frame.contentWindow.scrollX/Y` which requires same-origin iframe access — fails silently if restricted (scroll will be 0,0)
-- (-) If the user saves but then navigates the backend for more than 30 seconds before the page is fully loaded, state is discarded (acceptable)
+- (+) Scroll position and highlight restored after both body-swap AND full reload
+- (+) Fixes timing race where `refreshPreview()` fires before `resolveAndShow()` returns
+- (-) `scrollX/Y` read via `frame.contentWindow` — fails silently if cross-origin (will be 0,0)
+
+---
+
+## ADR-007: Theme-independent marker injection via Contao hooks
+
+**Date:** 2026-05  
+**Status:** Accepted
+
+**Context:**
+The partial DOM swap (`clp:refresh`) required `data-contao-table="tl_article"` and `data-contao-id` on article wrappers. Originally only Design+'s `mod_article.html.twig` provided these. Any other theme would silently get no DOM swap (no error, just a stale iframe after save).
+
+**Decision:**
+Add two Contao hook listeners that auto-inject `data-contao-*` attributes when the page is loaded with `?_clp=1`:
+
+- `parseFrontendTemplate` hook (`InjectArticleMarkersListener`): fires in `Module::generate()` after template render, including Twig-rendered articles. Extracts the numeric ID from Contao's default `id="article-{N}"` attribute. Falls back gracefully when `noMarkup` or a custom CSS ID is set (JS fallback selectors still handle highlight).
+- `getContentElement` hook (`InjectContentElementMarkersListener`): fires for legacy `ContentElement` subclasses and RSCE. Injects `data-contao-table`, `data-contao-id`, and `data-contao-label`. Twig-first `#[AsContentElement]` CEs bypass the hook (documented limitation).
+
+Both listeners check `str_contains($buffer, 'data-contao-table=')` before injecting, so themes that already provide the attributes (Design+) are never double-injected.
+
+**Consequences:**
+- (+) Bundle works out of the box with any Contao theme
+- (+) Design+ theme keeps its existing template approach — no regression
+- (-) Twig-first `#[AsContentElement]` CEs are not covered by the CE hook
+
+---
+
+## ADR-008: Dual-mode CE + article highlighting
+
+**Date:** 2026-05  
+**Status:** Accepted
+
+**Context:**
+When editing a content element, both the CE and its parent article are relevant context. Showing only the CE makes it hard to locate the element on the page; showing only the article loses the CE precision.
+
+**Decision:**
+When both a CE selector and an article selector are provided and resolve to different DOM elements (dual mode):
+- CE: solid blue outline (`clp-sel`) + CE-type badge (e.g. "ICON LISTE") with edit icon
+- Article: dashed blue outline (`clp-sel-secondary`) + "ARTIKEL" badge with edit icon
+
+When only one resolves (article-only or CE=article), a single solid outline with a single badge.
+
+Badges are `position:absolute` in `<body>`, positioned at the element's top-left corner + 2px offset. Repositioned on `window.resize` (triggered by sidebar drag or zoom change). Both edit icons send `clp:edit` postMessage to the backend.
+
+**Consequences:**
+- (+) Editor always sees both which CE is active and which article contains it
+- (+) Edit icon provides single-click navigation to either record
+- (-) Two simultaneous outlines can look busy on very compact layouts
+
+---
+
+## ADR-009: Interactive hover highlighting
+
+**Date:** 2026-05  
+**Status:** Accepted
+
+**Context:**
+Editors need to discover which articles and CEs exist on a page without having to click through each one in the backend. A hover inspection mode (like browser DevTools element picker) gives this at zero additional UI cost.
+
+**Decision:**
+`mouseover` / `mouseout` listeners on `document` detect the nearest `[data-contao-table]` ancestor of the hovered element via `Element.closest()`. Hover effects:
+- Fuchsia dashed outline (`.clp-hover`, z-index 9998)
+- Fuchsia badge (`.clp-hover-badge`, z-index 2147483647 — always on top) with the same edit icon
+
+Active (blue) elements are excluded from hover. Hover badge is kept alive while the cursor is over it (edit icon remains clickable) by checking `relatedTarget` in `mouseout` against the data container element (`_hoverEl.contains(rel)`). Same-origin link clicks in the iframe are intercepted and `?_clp=1` is appended so the script survives page navigation.
+
+**Consequences:**
+- (+) Instant discoverability of all annotated elements without backend clicks
+- (+) Edit icon in hover badge navigates directly to the record
+- (-) Only elements with `data-contao-table` are discoverable (Twig-first CEs without the hook are invisible to hover)
+
+---
+
+## ADR-010: Edit badge navigation via `clp:edit` postMessage
+
+**Date:** 2026-05  
+**Status:** Accepted
+
+**Context:**
+Both active and hover badges carry a pencil edit icon. Clicking it should navigate the backend to the corresponding article or CE edit form without requiring the editor to manually locate the record in the backend tree.
+
+**Decision:**
+The edit icon button (`.clp-badge-edit`, `pointer-events:auto` inside `pointer-events:none` badge) fires `window.parent.postMessage({ type: 'clp:edit', table, id }, '*')`. The backend `live-preview.js` listens for `clp:edit` and builds the Contao edit URL:
+- `tl_content` → `?do=article&table=tl_content&act=edit&id={ceId}` (CE edit form)
+- `tl_article` → `?do=article&table=tl_content&id={articleId}` (article content list)
+
+Navigation via `Turbo.visit()` if available, else `window.location.href`.
+
+**Consequences:**
+- (+) Single click in the preview jumps to the right backend record
+- (+) Works for hover elements too — no need to locate them in the backend tree first
+- (-) `clp:edit` is sent to `'*'` origin — acceptable since the backend is same-origin and the payload contains only numeric IDs and table names
+
+---
+
+## ADR-011: Grid column visual target unwrapping
+
+**Date:** 2026-05  
+**Status:** Accepted (theme-specific heuristic, documented as such)
+
+**Context:**
+In Design+'s grid system, article and CE wrappers are often a `col-*` grid column div containing a single child element (the actual article/CE content). Applying the outline to the column wrapper makes the highlight appear too wide and visually imprecise.
+
+**Decision:**
+`clpVisTarget(el)`: if the data element has a class starting with `col-` and has exactly one child, return the child as the visual target. Outline and badge are applied to the child. The data element is unchanged for DOM queries, hover exclusion, and DOM swap targeting.
+
+Two separate reference pairs are maintained: `_el`/`_elVis` (data/visual) and `_elCe`/`_elCeVis`, `_hoverEl`/`_hoverElVis`. `mouseout` boundary check uses the container (`_hoverEl.contains(rel)`) so cursor movement between child and parent doesn't flicker.
+
+**Consequences:**
+- (+) Visually precise highlight in Design+ grid layouts
+- (+) Graceful fallback: if no `col-*` class or multiple children, `clpVisTarget` returns the element unchanged — works in any theme
+- (-) The `col-*` check is a hardcoded heuristic; themes with different grid class naming won't benefit
+
+---
+
+## ADR-012: DOM-first CE label resolution
+
+**Date:** 2026-05  
+**Status:** Accepted
+
+**Context:**
+CE type labels (`$GLOBALS['TL_LANG']['CTE']`) are sometimes not available in the backend request context (e.g. third-party bundle CEs that only register their language file during frontend rendering). The API controller fell back to the raw type key (`dma_simplegrid_wrapper_start`), which appeared in the badge as `DMA_SIMPLEGRID_WRAPPER_START`.
+
+The `getContentElement` hook runs in fully-bootstrapped frontend context where all language files are loaded — `data-contao-label` in the DOM is always correct.
+
+**Decision:**
+In the `clp:highlight` frontend handler, `getCeLabel(el)` is called on the found CE element instead of using `e.data.label` from the API. `getCeLabel()` reads `data-contao-label` first (set by the hook listener in frontend context), falls back to parsing the `ce_*` CSS class. The API label is only used if the CE element is not found in the DOM.
+
+The controller fallback is changed from `$type` to `''` — raw type keys never appear in the API response. Both PHP label resolvers share a `cleanLabel()` method that strips suffix words (`Anfang`, `Start`, `Ende`, `Wrapper` and colon-separated combinations) that add no badge value.
+
+**Consequences:**
+- (+) Correct human-readable labels even for CEs whose language files aren't loaded in backend context
+- (+) Single cleanup method applied consistently for both active and hover labels
+- (+) No additional requests — DOM attribute is already present
+- (-) If a CE is not found in the DOM (e.g. below the fold before scroll), label falls back to API value (empty string for unknown types → no badge text shown)
