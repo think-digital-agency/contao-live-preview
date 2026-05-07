@@ -52,8 +52,12 @@ class InjectLivePreviewListener
 
         $sidebarHtml = $this->twig->render('@ContaoLivePreview/backend/live_preview_sidebar.html.twig');
 
-        $cssHref = htmlspecialchars($this->packages->getUrl('bundles/contaolivepreview/css/live-preview.css'), \ENT_QUOTES, 'UTF-8');
-        $jsHref  = htmlspecialchars($this->packages->getUrl('bundles/contaolivepreview/js/live-preview.js'), \ENT_QUOTES, 'UTF-8');
+        $publicDir = \dirname(__DIR__, 2) . '/public';
+        $cssVer    = @filemtime($publicDir . '/css/live-preview.css') ?: 1;
+        $jsVer     = @filemtime($publicDir . '/js/live-preview.js') ?: 1;
+
+        $cssHref = htmlspecialchars($this->packages->getUrl('bundles/contaolivepreview/css/live-preview.css'), \ENT_QUOTES, 'UTF-8') . '?v=' . $cssVer;
+        $jsHref  = htmlspecialchars($this->packages->getUrl('bundles/contaolivepreview/js/live-preview.js'), \ENT_QUOTES, 'UTF-8') . '?v=' . $jsVer;
         $cssTag  = '<link rel="stylesheet" href="' . $cssHref . '">';
         $jsTag   = '<script src="' . $jsHref . '" defer></script>';
 
