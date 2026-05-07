@@ -64,6 +64,18 @@
     // Empty array when context is tl_page (no article to highlight).
     let highlightSelectors = [];
 
+    // Article-level selectors — always target the article wrapper.
+    // Used for clp:refresh DOM swap and as the secondary highlight target
+    // (outline + badge) when the primary highlight targets a content element.
+    let articleSelectors = [];
+
+    // Contao type key of the currently selected content element (e.g. 'text', 'image').
+    // null when context is tl_article or tl_page.
+    let currentContentElementType  = null;
+    // Human-readable DCA label for the content element type (e.g. 'Icon Liste').
+    // Falls back to the raw type key when no label is available.
+    let currentContentElementLabel = null;
+
     // Numeric article ID resolved for the current context. Used to target the
     // correct DOM node for partial refresh without a full iframe reload.
     // null when context is tl_page (no article).
@@ -129,10 +141,23 @@
             document.addEventListener('submit', handleFormSubmit);
 
             // clp:refreshed from the iframe confirms the DOM swap completed.
-            // Clear any pending save state so rehydration doesn't fire again.
+            // clp:edit opens the article or content element in the backend editor.
             window.addEventListener('message', (e) => {
                 if (e.data?.type === 'clp:refreshed') {
                     localStorage.removeItem(LS_SAVE_KEY);
+                    return;
+                }
+                if (e.data?.type === 'clp:edit') {
+                    const { table, id } = e.data;
+                    if (!table || !id) return;
+                    let params;
+                    if (table === 'tl_content') {
+                        params = new URLSearchParams({ do: 'article', table: 'tl_content', act: 'edit', id: String(id) });
+                    } else if (table === 'tl_article') {
+                        params = new URLSearchParams({ do: 'article', table: 'tl_content', id: String(id) });
+                    } else return;
+                    const url = window.location.pathname + '?' + params.toString();
+                    if (window.Turbo) { Turbo.visit(url); } else { window.location.href = url; }
                 }
             });
 
@@ -294,12 +319,23 @@
         if (!highlightSelectors.length || !frame?.contentWindow) return;
         // When called as a load event listener, behavior is an Event object — ignore it.
         const b = (behavior === 'instant' || behavior === 'smooth') ? behavior : scrollBehavior;
+        const isCe = currentContext?.table === 'tl_content';
+        // CE label: DCA label or raw type, always uppercase (e.g. "ICON LISTE", "TEXT")
+        const ceLabel = isCe
+            ? (currentContentElementLabel || currentContentElementType || '').toUpperCase()
+            : '';
+        // Article label: always just "ARTIKEL"
+        const articleLabel = 'ARTIKEL';
         try {
             frame.contentWindow.postMessage({
-                type:           'clp:highlight',
-                selectors:      highlightSelectors,
-                scrollBehavior: b,
-                label:          currentArticleTitle || '',
+                type:             'clp:highlight',
+                selectors:        highlightSelectors,
+                articleSelectors,
+                scrollBehavior:   b,
+                label:            isCe ? ceLabel : articleLabel,
+                articleLabel,
+                articleId:        currentArticleId,
+                contentElementId: isCe ? currentContext?.id : null,
             }, '*');
         } catch { }
     }
@@ -317,9 +353,12 @@
             const data = await res.json();
 
             if (data.previewUrl) {
-                highlightSelectors  = data.highlightSelectors || [];
-                currentArticleId    = data.articleId    || null;
-                currentArticleTitle = data.articleTitle || null;
+                highlightSelectors        = data.highlightSelectors  || [];
+                articleSelectors          = data.articleSelectors    || [];
+                currentArticleId          = data.articleId           || null;
+                currentArticleTitle       = data.articleTitle        || null;
+                currentContentElementType  = data.contentElementType  || null;
+                currentContentElementLabel = data.contentElementLabel || null;
                 // Smooth scroll when navigating to a different article; instant when
                 // switching between content elements (position barely changes).
                 scrollBehavior = ctx.table === 'tl_content' ? 'instant' : 'smooth';
@@ -385,8 +424,8 @@
             frame.contentWindow.postMessage({
                 type:      'clp:refresh',
                 articleId: currentArticleId,
-                selectors: highlightSelectors,
-                label:     currentArticleTitle || '',
+                selectors: articleSelectors.length ? articleSelectors : highlightSelectors,
+                label:     'ARTIKEL',
             }, '*');
         } catch { }
     }
@@ -415,10 +454,13 @@
 
         try {
             localStorage.setItem(LS_SAVE_KEY, JSON.stringify({
-                articleId: currentArticleId,
-                label:     currentArticleTitle || '',
-                iframeUrl: getCleanSrc(),
-                selectors: highlightSelectors,
+                articleId:             currentArticleId,
+                label:                 currentArticleTitle || '',
+                contentElementType:    currentContentElementType,
+                contentElementLabel:   currentContentElementLabel,
+                iframeUrl:             getCleanSrc(),
+                selectors:            highlightSelectors,
+                articleSelectors,
                 scrollX,
                 scrollY,
                 ts: Date.now(),
@@ -449,9 +491,12 @@
             // (e.g. Contao redirect chain after "Save and Close") don't re-trigger.
             // clp:refreshed will call removeItem again — that's a harmless no-op.
             localStorage.removeItem(LS_SAVE_KEY);
-            if (state.articleId)         currentArticleId    = state.articleId;
-            if (state.label !== undefined) currentArticleTitle = state.label || null;
-            if (state.selectors?.length) highlightSelectors  = state.selectors;
+            if (state.articleId)                        currentArticleId          = state.articleId;
+            if (state.label !== undefined)              currentArticleTitle       = state.label || null;
+            if (state.contentElementType !== undefined)  currentContentElementType  = state.contentElementType  || null;
+            if (state.contentElementLabel !== undefined)  currentContentElementLabel = state.contentElementLabel || null;
+            if (state.selectors?.length)                highlightSelectors        = state.selectors;
+            if (state.articleSelectors?.length)         articleSelectors          = state.articleSelectors;
             frameNeedsReload = true;
             scheduleRefresh(250);
             return;
@@ -462,9 +507,12 @@
 
         if (!state.iframeUrl) return;
 
-        currentArticleId    = state.articleId || null;
-        currentArticleTitle = state.label     || null;
-        highlightSelectors  = state.selectors || [];
+        currentArticleId          = state.articleId           || null;
+        currentArticleTitle       = state.label               || null;
+        currentContentElementType  = state.contentElementType  || null;
+        currentContentElementLabel = state.contentElementLabel || null;
+        highlightSelectors        = state.selectors           || [];
+        articleSelectors          = state.articleSelectors    || [];
         frameNeedsReload   = false; // will be set true on load
 
         frame.src = addClpParam(state.iframeUrl);
