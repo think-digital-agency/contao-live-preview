@@ -26,7 +26,10 @@
 | Extensibility | `PreviewUrlResolverInterface` | Third-party bundles alias the interface to add custom table support |
 | Highlight injection | `?_clp=1` + `KernelEvents::RESPONSE` | Frontend script injected ephemerally — zero impact on normal page output |
 | Article markers | `parseFrontendTemplate` hook | Auto-injects `data-contao-*` on article wrapper for any theme |
-| CE markers + label | `getContentElement` hook | Auto-injects `data-contao-*` + `data-contao-label` on CE wrapper |
+| CE markers + label (legacy) | `getContentElement` hook | Auto-injects `data-contao-*` + `data-contao-label` on CE wrapper; covers legacy `ContentElement` + RSCE |
+| CE markers + label (Twig-first) | `KernelEvents::RESPONSE` HTML annotation | Post-renders `ce_{type}`-classed wrappers via DB lookup + type+position matching; covers `#[AsContentElement]` CEs |
+| Label deduplication | `LabelCleanerTrait` | Shared `cleanLabel()` + `resolveLabel()` used by controller + both CE listeners |
+| Asset URLs | `Symfony\Component\Asset\Packages` | Respects `base_path` (subdir installs) and `version` (cache-busting) |
 | Active highlight | Solid/dashed blue outline + badge | CE solid blue; article dashed blue in dual mode |
 | Hover highlight | Fuchsia dashed outline + badge | Any `[data-contao-table]` element; edit icon navigates backend |
 | Edit navigation | `clp:edit` postMessage → `Turbo.visit()` | Badge edit icon → backend navigates to article content list or CE edit form |
@@ -46,11 +49,13 @@
 | `src/EventListener/InjectPreviewScriptListener.php` | `KernelEvents::RESPONSE` — injects highlight + hover + link-intercept script before `</body>` when `?_clp=1` |
 | `src/EventListener/InjectArticleMarkersListener.php` | `parseFrontendTemplate` hook — auto-injects `data-contao-table`/`data-contao-id` on article wrapper; skips if theme already provides them |
 | `src/EventListener/InjectContentElementMarkersListener.php` | `getContentElement` hook — auto-injects `data-contao-table`/`data-contao-id`/`data-contao-label` on CE wrapper; covers legacy `ContentElement` + RSCE |
+| `src/EventListener/InjectTwigContentElementMarkersListener.php` | `KernelEvents::RESPONSE` (priority -195) — annotates Twig-first `#[AsContentElement]` CE wrappers via DB lookup + type+position matching |
+| `src/Service/LabelCleanerTrait.php` | Shared `cleanLabel()` + `resolveLabel()` used by controller + both CE listeners |
 | `src/Service/PreviewUrlResolverInterface.php` | Extension point: implement and alias to add custom table support |
 | `src/Service/PreviewUrlResolver.php` | DBAL chain: `tl_content → tl_article → tl_page`; reads `type` for CE label resolution |
 | `src/Controller/PreviewResolverController.php` | `GET /contao/live-preview/resolve` → full JSON context incl. `highlightSelectors`, `articleSelectors`, `contentElementLabel` |
 | `src/Resources/config/services.yaml` | Autowired services + explicit interface alias |
-| `config/routes.yaml` | Route for the resolve endpoint |
+| `config/routes.yaml` | Route for the resolve endpoint (active); `#[Route]` attribute on controller intentionally absent |
 | `templates/backend/live_preview_sidebar.html.twig` | `<aside data-turbo-permanent>` with resizer, toolbar, iframe |
 | `public/js/live-preview.js` | Context detection, resolve, iframe management, save detection, resize, `clp:edit` handler |
 | `public/css/live-preview.css` | Flex layout overrides, sidebar, toolbar, toggle button, responsive |
@@ -228,7 +233,7 @@ if (doV === 'news' && id > 0) {
 - **tl_page context**: `currentArticleId` is null → `refreshPreview()` returns early. Page-level edits require a manual sidebar reload.
 - **Full page reload detection**: `getCleanSrc()` returns `''` on iframe empty (full reload) vs. non-empty (survived Turbo body-swap). `tryRehydrate()` uses this to pick the correct rehydration path.
 - **`clp_pending_save` TTL**: expires after 30 s. State discarded if backend navigation takes longer.
-- **Hover + Twig-first CEs**: CEs registered with `#[AsContentElement]` bypass the `getContentElement` hook — they get no `data-contao-table` attr and are invisible to hover highlighting.
+- **Twig-first CE type+position matching**: `InjectTwigContentElementMarkersListener` annotates CEs by matching the Nth `ce_{type}` HTML element to the Nth DB record of that type (sorted by article+content sorting). This breaks in multi-column layouts where the HTML column order differs from the DB order, and when nested CEs (e.g. accordion content) add extra occurrences of a type. CEs with a `cssId` set are always matched exactly via `id="cssId"` — use cssId on affected CEs as a workaround.
 - **CE label backend vs. frontend**: the resolve controller may not find a CTE label for third-party CEs if their language file isn't loaded in backend context. The controller returns `''` (never the raw type key); the frontend falls back to `data-contao-label` from the DOM, which is always correct because the hook runs in fully-bootstrapped frontend context.
 - **Badge reposition**: badges are `position:absolute` in `<body>` and are repositioned on `window.resize` (triggered by sidebar drag or zoom change). They do NOT reposition on scroll — `scrollY + getBoundingClientRect().top` is document-absolute and stays correct.
 - **Visual target (col-* unwrap)**: `clpVisTarget()` checks for `col-*` class + single child. If a grid wrapper has multiple children (edge case), the wrapper itself is used as visual target — no data is lost.
@@ -240,10 +245,13 @@ if (doV === 'news' && id > 0) {
 - [ ] Support for `do=news`, `do=calendar` etc. — via the `PreviewUrlResolverInterface` extension point
 - [ ] Per-user sidebar width stored in `tl_user` (currently localStorage only)
 - [ ] `FrontendPreviewAuthenticator` integration to show unpublished content reliably
-- [ ] Hover + Twig-first `#[AsContentElement]` CEs — these bypass `getContentElement`; would need a separate Twig extension or response listener to inject data attributes
-- [ ] **Open-source release** — rename namespace `Vendor\ContaoLivePreviewBundle` → `ThinkDigital\ContaoLivePreview`, package name → `think-digital-agency/contao-live-preview`, add LICENSE (LGPL-3.0), README.md, remove CLAUDE.md; extract to own GitHub repo via `git filter-repo --subdirectory-filter`; register on Packagist; Contao Extension Store picks up automatically.
+- [ ] **Open-source release** — rename namespace `Vendor\ContaoLivePreviewBundle` → `ThinkDigital\ContaoLivePreview`, package name → `think-digital-agency/contao-live-preview`, add LICENSE (LGPL-3.0), README.md, translate UI labels (currently German), remove CLAUDE.md; extract to own GitHub repo via `git filter-repo --subdirectory-filter`; register on Packagist; Contao Extension Store picks up automatically.
+- [ ] Per-user sidebar width stored in `tl_user` (currently localStorage only)
+- [ ] `FrontendPreviewAuthenticator` integration to show unpublished content reliably
+- [ ] Support for `do=news`, `do=calendar` etc. — via the `PreviewUrlResolverInterface` extension point
 - [x] Article-level partial refresh with selector chain fallback (any theme)
 - [x] Theme-independent marker injection via `parseFrontendTemplate` + `getContentElement` hooks
+- [x] Twig-first `#[AsContentElement]` CE annotation via `KernelEvents::RESPONSE` post-processor
 - [x] Dual-mode CE + article highlighting (solid/dashed blue, separate badges)
 - [x] Edit badges with pencil icon — click navigates backend to article content list or CE edit form
 - [x] Interactive hover highlighting — fuchsia dashed outline + badge for any `[data-contao-table]` element

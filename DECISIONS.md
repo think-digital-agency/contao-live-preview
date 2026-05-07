@@ -268,3 +268,64 @@ The controller fallback is changed from `$type` to `''` — raw type keys never 
 - (+) Single cleanup method applied consistently for both active and hover labels
 - (+) No additional requests — DOM attribute is already present
 - (-) If a CE is not found in the DOM (e.g. below the fold before scroll), label falls back to API value (empty string for unknown types → no badge text shown)
+
+---
+
+## ADR-013: Twig-first CE annotation via RESPONSE post-processor
+
+**Date:** 2026-05
+**Status:** Accepted
+
+**Context:**
+Twig-first content elements registered with `#[AsContentElement]` (all Contao 5 core CEs: text, image, gallery, downloads, …) bypass the `getContentElement` hook. They produce no `data-contao-*` attributes, making them invisible to hover highlighting and the active-CE badge. For a theme-independent bundle this is a critical gap.
+
+No Symfony service is exposed to decorate the CE fragment renderer without deep coupling to Contao internals. The rendered HTML however always contains `class="ce_{type} ..."` on the CE wrapper — a pattern Contao has maintained since version 2.
+
+**Decision:**
+Add `InjectTwigContentElementMarkersListener` on `KernelEvents::RESPONSE` (priority -195, before the script injection at -200). When `?_clp=1` is present and `$GLOBALS['objPage']` is set, the listener:
+1. Loads all visible CEs for the current page via DBAL, ordered by `a.sorting, c.sorting`.
+2. Scans the rendered HTML with `preg_match_all` for opening tags matching `ce_{type}` CSS class that do not yet carry `data-contao-table=`.
+3. Matches each DB row to the Nth HTML occurrence of its type (type+position matching). CEs with a custom `cssId` use exact `id="cssId"` matching instead.
+4. Injects `data-contao-table="tl_content"`, `data-contao-id`, and `data-contao-label` into each matched tag via `substr_replace` (applied in reverse offset order to keep byte positions stable).
+
+**Consequences:**
+- (+) All core Contao 5 CEs become hover-highlightable and get correct badges
+- (+) No Contao internals patched — pure KernelEvents + DBAL
+- (+) Legacy CEs (already annotated by the hook listener) are skipped via `str_contains` guard
+- (-) Multi-column layouts may misalign type+position matching when side-column HTML precedes main-column HTML — cssId matching is always correct
+- (-) Nested CEs (e.g. accordion items rendered inside an accordion wrapper) appear as additional occurrences of `ce_{type}`, shifting position counters for subsequent CEs of the same type
+
+---
+
+## ADR-014: `postMessage` with `'*'` target origin
+
+**Date:** 2026-05
+**Status:** Accepted — intentional, documented
+
+**Context:**
+The frontend iframe sends `clp:edit` and `clp:refreshed` messages to `window.parent` (the backend). Using `window.location.origin` as the target would restrict delivery to the exact frontend origin. In multi-domain setups (frontend on `www.example.com`, backend on `admin.example.com`) this would silently drop messages.
+
+**Decision:**
+Keep `'*'` as the target origin for all frontend→backend postMessages. The payload contains only numeric IDs and table names (`tl_content`, `tl_article`) — no sensitive data. The backend listener already validates message type before acting.
+
+**Consequences:**
+- (+) Works in any single- or multi-domain Contao setup without configuration
+- (-) Any page that can embed the frontend iframe and craft a `clp:edit` message could trigger a `Turbo.visit()` in the backend — acceptable risk given the payload contains only public identifiers and the backend enforces `ROLE_USER` on all edit routes
+
+---
+
+## ADR-015: `LabelCleanerTrait` for shared label utilities
+
+**Date:** 2026-05
+**Status:** Accepted
+
+**Context:**
+`cleanLabel()` and the pattern of loading the CTE language file were duplicated across `PreviewResolverController` and `InjectContentElementMarkersListener`. Adding a third consumer (`InjectTwigContentElementMarkersListener`) made the duplication untenable.
+
+**Decision:**
+Extract into `Service\LabelCleanerTrait` with two methods: `cleanLabel(string): string` (regex stripping) and `resolveLabel(string $type, ContaoFramework $framework): string` (language-file load + cleanLabel). All three consumers use the trait via `use LabelCleanerTrait;`.
+
+**Consequences:**
+- (+) Single source of truth for label cleanup logic
+- (+) Trait approach avoids a static utility class, keeping dependencies injectable per-class
+- (-) PHP traits are not the most discoverable pattern; the trait is in `Service/` to signal its shared-utility role

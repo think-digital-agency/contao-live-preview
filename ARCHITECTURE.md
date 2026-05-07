@@ -21,14 +21,16 @@ packages/contao-live-preview-bundle/
 │   ├── DependencyInjection/
 │   │   └── ContaoLivePreviewExtension.php      # DI extension, loads services.yaml
 │   ├── EventListener/
-│   │   ├── InjectLivePreviewListener.php       # outputBackendTemplate hook
-│   │   ├── InjectPreviewScriptListener.php     # KernelEvents::RESPONSE — injects highlight+hover script
+│   │   ├── InjectLivePreviewListener.php       # outputBackendTemplate hook; asset URLs via Packages service
+│   │   ├── InjectPreviewScriptListener.php     # KernelEvents::RESPONSE (-200) — injects highlight+hover script
 │   │   ├── InjectArticleMarkersListener.php    # parseFrontendTemplate hook — auto-injects article data-attrs
-│   │   └── InjectContentElementMarkersListener.php # getContentElement hook — auto-injects CE data-attrs + label
+│   │   ├── InjectContentElementMarkersListener.php # getContentElement hook — legacy CEs + RSCE
+│   │   └── InjectTwigContentElementMarkersListener.php # KernelEvents::RESPONSE (-195) — Twig-first CEs
 │   ├── Resources/
 │   │   └── config/
 │   │       └── services.yaml                   # Autowired services + interface alias
 │   └── Service/
+│       ├── LabelCleanerTrait.php               # Shared cleanLabel() + resolveLabel() for CE listeners + controller
 │       ├── PreviewUrlResolverInterface.php     # Extension point for third-party bundles
 │       └── PreviewUrlResolver.php              # DBAL parent-chain resolver
 └── templates/
@@ -42,10 +44,11 @@ packages/contao-live-preview-bundle/
 
 | Service | Class | Dependencies |
 |---|---|---|
-| `InjectLivePreviewListener` | `EventListener\InjectLivePreviewListener` | `Twig\Environment`, `RequestStack` |
+| `InjectLivePreviewListener` | `EventListener\InjectLivePreviewListener` | `Twig\Environment`, `RequestStack`, `Packages` |
 | `InjectPreviewScriptListener` | `EventListener\InjectPreviewScriptListener` | — |
 | `InjectArticleMarkersListener` | `EventListener\InjectArticleMarkersListener` | `RequestStack` |
 | `InjectContentElementMarkersListener` | `EventListener\InjectContentElementMarkersListener` | `RequestStack`, `ContaoFramework` |
+| `InjectTwigContentElementMarkersListener` | `EventListener\InjectTwigContentElementMarkersListener` | `RequestStack`, `ContaoFramework`, `Connection` |
 | `PreviewResolverController` | `Controller\PreviewResolverController` | `PreviewUrlResolverInterface`, `ContaoFramework` |
 | `PreviewUrlResolver` | `Service\PreviewUrlResolver` | `Doctrine\DBAL\Connection` |
 
@@ -99,7 +102,9 @@ The `previewUrl` is built via `PageModel::findWithDetails($pageId)->getAbsoluteU
 |---|---|---|---|
 | `outputBackendTemplate` | `InjectLivePreviewListener` | — | Injects sidebar HTML + CSS/JS into `be_main`. Skips `?popup=1` / `?picker`. |
 | `parseFrontendTemplate` | `InjectArticleMarkersListener` | — | Auto-injects `data-contao-table="tl_article"` + `data-contao-id` on article wrapper when `?_clp=1`. Skips if theme already provides them. |
-| `getContentElement` | `InjectContentElementMarkersListener` | — | Auto-injects `data-contao-table="tl_content"` + `data-contao-id` + `data-contao-label` on CE wrapper when `?_clp=1`. Covers legacy `ContentElement` subclasses and RSCE. Twig-first `#[AsContentElement]` CEs bypass this hook. |
+| `getContentElement` | `InjectContentElementMarkersListener` | — | Auto-injects `data-contao-table="tl_content"` + `data-contao-id` + `data-contao-label` on CE wrapper when `?_clp=1`. Covers legacy `ContentElement` subclasses and RSCE. Twig-first `#[AsContentElement]` CEs bypass this hook and are handled by `InjectTwigContentElementMarkersListener`. |
+
+`KernelEvents::RESPONSE` (priority -195): `InjectTwigContentElementMarkersListener` annotates Twig-first CE wrappers via DBAL lookup + type+position matching. Runs before `-200` so data attributes are present when the inline script is injected.
 
 `KernelEvents::RESPONSE` (priority -200): `InjectPreviewScriptListener` injects the highlight + hover inline script before `</body>` when `?_clp=1` and content type is `text/html`.
 
