@@ -6,6 +6,7 @@ namespace Vendor\ContaoLivePreviewBundle\Controller;
 
 use Contao\CoreBundle\Framework\ContaoFramework;
 use Contao\PageModel;
+use Contao\System;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
@@ -30,6 +31,8 @@ class PreviewResolverController extends AbstractController
 
     public function __invoke(Request $request): JsonResponse
     {
+        $this->framework->initialize();
+
         // Release session lock immediately so concurrent Turbo navigation requests
         // are not blocked waiting for this AJAX call to finish.
         if ($request->hasSession()) {
@@ -56,34 +59,48 @@ class PreviewResolverController extends AbstractController
 
         $previewUrl = $this->buildPreviewUrl($pageData['pageId']);
 
-        $articleId    = $pageData['articleId'] ?? null;
-        $articleAlias = (string) ($pageData['articleAlias'] ?? '');
-        $articleCssId = (string) ($pageData['articleCssId'] ?? '');
+        $articleId        = $pageData['articleId'] ?? null;
+        $articleAlias     = (string) ($pageData['articleAlias'] ?? '');
+        $articleCssId     = (string) ($pageData['articleCssId'] ?? '');
+        $contentElementId    = $pageData['contentElementId']   ?? null;
+        $contentElementType  = (string) ($pageData['contentElementType'] ?? '');
+        $contentElementLabel = '' !== $contentElementType
+            ? $this->resolveContentElementLabel($contentElementType)
+            : '';
 
-        // Ordered selector chain: JS tries each in sequence, uses the first match.
-        // 1. [data-contao-table="tl_article"][data-contao-id="{id}"] — primary, stable, no guessing
-        // 2. #article-{numericId}  — Contao's default CSS ID fallback
-        // 3. #article-{alias}      — alias-based CSS ID fallback
-        // 4. #{cssId}              — manually set CSS ID in the backend
-        $selectors = [];
+        // Article-level selectors — used for DOM swap (clp:refresh) and as secondary
+        // highlight target (outline + badge). Ordered by specificity.
+        $articleSelectors = [];
         if (\is_int($articleId) && $articleId > 0) {
-            $selectors[] = '[data-contao-table="tl_article"][data-contao-id="' . $articleId . '"]';
-            $selectors[] = '#article-' . $articleId;
+            $articleSelectors[] = '[data-contao-table="tl_article"][data-contao-id="' . $articleId . '"]';
+            $articleSelectors[] = '#article-' . $articleId;
         }
         if ('' !== $articleAlias && $articleAlias !== (string) $articleId) {
-            $selectors[] = '#article-' . $articleAlias;
+            $articleSelectors[] = '#article-' . $articleAlias;
         }
         if ('' !== $articleCssId) {
-            $selectors[] = '#' . $articleCssId;
+            $articleSelectors[] = '#' . $articleCssId;
         }
+
+        // Primary highlight selectors — CE selector when context is tl_content,
+        // otherwise same as articleSelectors. JS scrolls to the primary target.
+        // When CE + article differ, the frontend highlights both simultaneously:
+        // CE gets the light-blue background, article gets the outline + badge.
+        $highlightSelectors = \is_int($contentElementId) && $contentElementId > 0
+            ? ['[data-contao-table="tl_content"][data-contao-id="' . $contentElementId . '"]']
+            : $articleSelectors;
 
         return $this->json([
             'pageId'             => $pageData['pageId'],
             'pageAlias'          => $pageData['alias'],
             'articleId'          => $articleId,
             'articleTitle'       => (string) ($pageData['articleTitle'] ?? ''),
-            'previewUrl'         => $previewUrl,
-            'highlightSelectors' => $selectors,
+            'contentElementId'    => $contentElementId,
+            'contentElementType'  => $contentElementType,
+            'contentElementLabel' => $contentElementLabel,
+            'previewUrl'          => $previewUrl,
+            'highlightSelectors' => $highlightSelectors,
+            'articleSelectors'   => $articleSelectors,
         ]);
     }
 
@@ -101,9 +118,36 @@ class PreviewResolverController extends AbstractController
      * findWithDetails() walks up the page hierarchy to inherit language, urlPrefix,
      * domain etc. — avoiding the need to manually traverse tl_page to the root.
      */
+    private function resolveContentElementLabel(string $type): string
+    {
+        /** @var System $system */
+        $system = $this->framework->getAdapter(System::class);
+        $system->loadLanguageFile('modules');
+
+        // Fall back to '' rather than the raw type key — unknown types are handled
+        // gracefully in JS (getCeLabel reads data-contao-label from the DOM instead).
+        return $this->cleanLabel((string) ($GLOBALS['TL_LANG']['CTE'][$type][0] ?? ''));
+    }
+
+    /**
+     * Strips common Contao element suffix words that add no value in a badge.
+     * Handles colon-separated ("SimpleGrid: Wrapper Start") and space-separated
+     * ("Akkordeon Anfang") forms.
+     */
+    private function cleanLabel(string $label): string
+    {
+        $label = (string) preg_replace(
+            '/\s*:?\s*\b(?:Wrapper\s+)?(?:Anfang|Start|Ende|End)\b\s*$|:?\s*\bWrapper\b\s*$/i',
+            '',
+            $label,
+        );
+
+        return trim((string) preg_replace('/\s{2,}/', ' ', $label));
+    }
+
     private function buildPreviewUrl(int $pageId): string
     {
-        $this->framework->initialize();
+        // framework already initialized in __invoke
 
         /** @var \Contao\Model\Registry $pageAdapter */
         $pageAdapter = $this->framework->getAdapter(PageModel::class);

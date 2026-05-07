@@ -31,7 +31,7 @@ class PreviewUrlResolver implements PreviewUrlResolverInterface
     private function resolveFromContent(int $id): ?array
     {
         $row = $this->connection->fetchAssociative(
-            'SELECT pid FROM tl_content WHERE id = ?',
+            'SELECT pid, type FROM tl_content WHERE id = ?',
             [$id],
         );
 
@@ -39,7 +39,14 @@ class PreviewUrlResolver implements PreviewUrlResolverInterface
             return null;
         }
 
-        return $this->resolveFromArticle((int) $row['pid']);
+        $result = $this->resolveFromArticle((int) $row['pid']);
+
+        if (null !== $result) {
+            $result['contentElementId']   = $id;
+            $result['contentElementType'] = (string) ($row['type'] ?? '');
+        }
+
+        return $result;
     }
 
     private function resolveFromArticle(int $id): ?array
@@ -82,13 +89,15 @@ class PreviewUrlResolver implements PreviewUrlResolverInterface
         }
 
         return [
-            'pageId'       => (int) $row['id'],
-            'alias'        => (string) $row['alias'],
-            'language'     => (string) $row['language'],
-            'dns'          => (string) $row['dns'],
-            'articleId'    => null, // overwritten by resolveFromArticle
-            'articleAlias' => '',   // overwritten by resolveFromArticle
-            'articleCssId' => '',   // overwritten by resolveFromArticle
+            'pageId'            => (int) $row['id'],
+            'alias'             => (string) $row['alias'],
+            'language'          => (string) $row['language'],
+            'dns'               => (string) $row['dns'],
+            'articleId'         => null, // overwritten by resolveFromArticle
+            'articleAlias'      => '',   // overwritten by resolveFromArticle
+            'articleCssId'      => '',   // overwritten by resolveFromArticle
+            'contentElementId'   => null, // overwritten by resolveFromContent
+            'contentElementType' => null, // overwritten by resolveFromContent
         ];
     }
 }
