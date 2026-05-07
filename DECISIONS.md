@@ -314,6 +314,28 @@ Keep `'*'` as the target origin for all frontend→backend postMessages. The pay
 
 ---
 
+## ADR-016: Root-page fallback when no backend context is active
+
+**Date:** 2026-05
+**Status:** Accepted
+
+**Context:**
+When an editor opens backend areas with no resolvable page context (dashboard, system settings, user manager, etc.) the preview sidebar was blank — `parseContext()` returned `null`, `clearFrame()` set `frame.src = ''`, and the URL display was empty. The sidebar had no visual value in these views.
+
+**Decision:**
+Replace the `clearFrame()` path with a call to `resolveAndShow(null)`. When the controller receives a request without `table`/`id` parameters, it calls `PreviewUrlResolverInterface::resolveRootPage()` instead of returning `400`. That method queries the first published `type='root'` page and its first published `type='regular'` child, returning the child's URL with empty `highlightSelectors` and `articleSelectors`.
+
+A `UNRESOLVED` sentinel object replaces the `null` initialisation of `currentContext`. This ensures the dedup guard (`contextKey` comparison) always passes on the first call after every navigation, while still deduplicating repeated resolves for the same no-context state.
+
+**Consequences:**
+- (+) Preview sidebar always shows something useful — editors get a live view of the site even from unrelated backend sections
+- (+) No new endpoint or route — the existing resolve endpoint handles both cases
+- (+) Dedup logic is preserved: the fallback is fetched once per navigation, not on every `triggerResolve` tick
+- (-) The fallback always picks the first root tree / first regular child — in multi-language or multi-domain setups this may not be the "most relevant" preview. No configuration option yet.
+- (-) `resolveRootPage()` is now part of `PreviewUrlResolverInterface`. Third-party decorators must implement the method (typically by delegating to the inner resolver).
+
+---
+
 ## ADR-015: `LabelCleanerTrait` for shared label utilities
 
 **Date:** 2026-05

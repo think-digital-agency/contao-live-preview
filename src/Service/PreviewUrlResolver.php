@@ -77,6 +77,31 @@ class PreviewUrlResolver implements PreviewUrlResolverInterface
         return $result;
     }
 
+    public function resolveRootPage(): ?array
+    {
+        // First published root page (ordered by sorting so multi-language setups
+        // consistently pick the primary language tree).
+        $root = $this->connection->fetchAssociative(
+            "SELECT id FROM tl_page WHERE type = 'root' AND published = '1' ORDER BY sorting ASC LIMIT 1",
+        );
+
+        if (!$root) {
+            return null;
+        }
+
+        // First published regular page that is a direct child of that root.
+        $child = $this->connection->fetchAssociative(
+            "SELECT id FROM tl_page WHERE pid = ? AND type = 'regular' AND published = '1' ORDER BY sorting ASC LIMIT 1",
+            [(int) $root['id']],
+        );
+
+        if (!$child) {
+            return null;
+        }
+
+        return $this->resolveFromPage((int) $child['id']);
+    }
+
     private function resolveFromPage(int $id): ?array
     {
         $row = $this->connection->fetchAssociative(

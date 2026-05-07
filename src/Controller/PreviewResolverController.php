@@ -45,7 +45,24 @@ class PreviewResolverController extends AbstractController
         }
 
         if ('' === $table || $id <= 0) {
-            return $this->json(['error' => 'Missing table or id'], 400);
+            $pageData = $this->resolver->resolveRootPage();
+            if (null === $pageData) {
+                return $this->json(['error' => 'No root page found'], 404);
+            }
+            $previewUrl = $this->buildPreviewUrl($pageData['pageId']);
+
+            return $this->json([
+                'pageId'              => $pageData['pageId'],
+                'pageAlias'           => $pageData['alias'],
+                'articleId'           => null,
+                'articleTitle'        => '',
+                'contentElementId'    => null,
+                'contentElementType'  => '',
+                'contentElementLabel' => '',
+                'previewUrl'          => $previewUrl,
+                'highlightSelectors'  => [],
+                'articleSelectors'    => [],
+            ]);
         }
 
         $pageData = $this->resolver->resolve($table, $id);

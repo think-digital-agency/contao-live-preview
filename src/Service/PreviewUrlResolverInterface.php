@@ -17,4 +17,12 @@ interface PreviewUrlResolverInterface
      * @return array{pageId: int, alias: string}|null
      */
     public function resolve(string $table, int $id): ?array;
+
+    /**
+     * Resolves the first routable page of the first published root tree.
+     * Used as fallback preview when no specific backend context is active.
+     *
+     * @return array{pageId: int, alias: string}|null
+     */
+    public function resolveRootPage(): ?array;
 }

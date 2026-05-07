@@ -33,6 +33,7 @@
     'use strict';
 
     const RESOLVE_ENDPOINT = '/contao/live-preview/resolve';
+    const UNRESOLVED       = {};          // sentinel — distinct from null ("showing fallback")
     const LS_OPEN_KEY      = 'clp_sidebar_open';
     const LS_WIDTH_KEY     = 'clp_sidebar_width';
     const LS_SAVE_KEY      = 'clp_pending_save';
@@ -51,7 +52,7 @@
     // Persistent state
     // -------------------------------------------------------------------------
     let isOpen         = false;
-    let currentContext = null;
+    let currentContext = UNRESOLVED;
     let resolveTimer   = null;
 
     // true only when the iframe already shows the correct URL and a partial
@@ -178,7 +179,7 @@
         }
 
         // Context from the previous page is stale — resolve for the new URL.
-        currentContext = null;
+        currentContext = UNRESOLVED;
         triggerResolve();
     }
 
@@ -228,7 +229,7 @@
 
         // When opening, always resolve — the iframe may show a stale page if the
         // user navigated while the sidebar was closed.
-        if (andResolve && isOpen && currentContext) {
+        if (andResolve && isOpen && currentContext !== UNRESOLVED) {
             resolveAndShow(currentContext);
         }
     }
@@ -282,11 +283,13 @@
         clearTimeout(resolveTimer);
         resolveTimer = setTimeout(() => {
             const ctx = parseContext();
-            if (contextKey(ctx) === contextKey(currentContext)) return;
+            // currentContext starts as UNRESOLVED (never equal to any ctx key) so
+            // the first resolve after every navigation always proceeds.
+            // null means "showing fallback" — deduped like any other context.
+            if (currentContext !== UNRESOLVED && contextKey(ctx) === contextKey(currentContext)) return;
             currentContext = ctx;
-            if (!ctx) { clearFrame(); return; }
             if (!isOpen) return;
-            resolveAndShow(ctx);
+            resolveAndShow(ctx); // null → fallback (root page, no highlights)
         }, RESOLVE_DEBOUNCE);
     }
 
@@ -341,7 +344,9 @@
     }
 
     async function resolveAndShow(ctx) {
-        const params = new URLSearchParams({ table: ctx.table, id: String(ctx.id) });
+        const params = ctx
+            ? new URLSearchParams({ table: ctx.table, id: String(ctx.id) })
+            : new URLSearchParams();
 
         try {
             const res = await fetch(RESOLVE_ENDPOINT + '?' + params, {
@@ -361,7 +366,7 @@
                 currentContentElementLabel = data.contentElementLabel || null;
                 // Smooth scroll when navigating to a different article; instant when
                 // switching between content elements (position barely changes).
-                scrollBehavior = ctx.table === 'tl_content' ? 'instant' : 'smooth';
+                scrollBehavior = ctx?.table === 'tl_content' ? 'instant' : 'smooth';
 
                 if (urlDisplay) urlDisplay.textContent = data.previewUrl;
                 const openBtn = document.getElementById('clp-open-tab');
