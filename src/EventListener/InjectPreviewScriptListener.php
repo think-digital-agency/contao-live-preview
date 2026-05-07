@@ -69,6 +69,7 @@ class InjectPreviewScriptListener
 var _el=null,_elVis=null,_elCe=null,_elCeVis=null,_badge=null,_badgeCe=null,_gen=0;
 var _articleId=null,_contentElementId=null;
 var _hoverEl=null,_hoverElVis=null,_hoverBadge=null;
+var _refreshAbort=null;
 var _editIcon='<svg style="flex-shrink:0" width="11" height="11" viewBox="0 0 10 10" fill="none"><path d="M7 1.5l1.5 1.5-5.5 5.5H1.5V7L7 1.5z" stroke="#fff" stroke-width="1.2" stroke-linejoin="round"/><line x1="5.8" y1="2.7" x2="7.3" y2="4.2" stroke="#fff" stroke-width="1.2"/></svg>';
 function findEl(sels){var r=null;for(var i=0;i<sels.length;i++){r=document.querySelector(sels[i]);if(r)break;}return r;}
 // When el is a single-child grid column wrapper (col-*), return the child as the visual target.
@@ -122,16 +123,25 @@ window.addEventListener('message',function(e){
   if(e.data.type==='clp:refresh'){
     var articleId=e.data.articleId;var selectors=e.data.selectors||[];var label=e.data.label||'';
     var scrollX=window.scrollX,scrollY=window.scrollY;
-    fetch(window.location.href,{credentials:'same-origin',headers:{'X-Requested-With':'XMLHttpRequest'}})
+    if(_refreshAbort){_refreshAbort.abort();}
+    _refreshAbort=('AbortController'in window)?new AbortController():null;
+    var fetchOpts={credentials:'same-origin',headers:{'X-Requested-With':'XMLHttpRequest'}};
+    if(_refreshAbort){fetchOpts.signal=_refreshAbort.signal;}
+    fetch(window.location.href,fetchOpts)
       .then(function(r){return r.text();})
       .then(function(html){
+        _refreshAbort=null;
         var doc=new DOMParser().parseFromString(html,'text/html');
         var fresh=null,live=null;
         for(var i=0;i<selectors.length;i++){var f=doc.querySelector(selectors[i]);var l=document.querySelector(selectors[i]);if(f&&l){fresh=f;live=l;break;}}
         if(fresh&&live){live.replaceWith(fresh);window.scrollTo({top:scrollY,left:scrollX,behavior:'instant'});var el=findEl(selectors);if(el)highlight(el,'instant',label,'tl_article',_articleId);}
         window.parent.postMessage({type:'clp:refreshed',articleId:articleId},'*');
       })
-      .catch(function(){window.parent.postMessage({type:'clp:refreshed',articleId:articleId},'*');});
+      .catch(function(err){
+        if(err&&err.name==='AbortError'){return;}
+        _refreshAbort=null;
+        window.parent.postMessage({type:'clp:refreshed',articleId:articleId},'*');
+      });
     return;
   }
 });
