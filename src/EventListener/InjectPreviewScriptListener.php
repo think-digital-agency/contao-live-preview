@@ -176,7 +176,10 @@ document.addEventListener('mouseout',function(e){
   clpHoverClear();
 });
 // Keep ?_clp=1 on same-origin link navigation so the script survives page changes.
+// Runs in bubble phase (false) so JS toggle handlers (e.g. mobile menu) can call
+// preventDefault() first — if they did, we skip navigation entirely.
 document.addEventListener('click',function(e){
+  if(e.defaultPrevented)return;
   var a=e.target.closest?e.target.closest('a[href]'):null;
   if(!a)return;
   var href=a.getAttribute('href')||'';
@@ -189,7 +192,7 @@ document.addEventListener('click',function(e){
     e.preventDefault();
     window.location.href=u.toString();
   }catch(err){}
-},true);
+},false);
 })();</script>
 HTML;
     }
