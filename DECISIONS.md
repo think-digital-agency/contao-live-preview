@@ -351,3 +351,38 @@ Extract into `Service\LabelCleanerTrait` with two methods: `cleanLabel(string): 
 - (+) Single source of truth for label cleanup logic
 - (+) Trait approach avoids a static utility class, keeping dependencies injectable per-class
 - (-) PHP traits are not the most discoverable pattern; the trait is in `Service/` to signal its shared-utility role
+
+
+---
+
+## ADR-016: Frontend module hover-edit via `getFrontendModule` hook
+
+**Date:** 2026-05
+**Status:** Accepted
+
+**Context:**
+Layout modules (navigation, header, footer, etc.) were not covered by the hover-edit system. Content elements and articles already had hover badges via the `getContentElement` and `parseFrontendTemplate` hooks. Modules needed the same treatment so editors can directly jump from a hovered module to its backend edit form.
+
+The main challenge: themes that do not emit `mod_*` CSS classes on module wrappers (e.g. Design+, which uses BEM classes like `m-navigation`, `m-header__logo`) make post-hoc HTML matching impossible. We cannot reliably identify module boundaries after the full page is assembled.
+
+**Decision:**
+Use the `getFrontendModule` hook (`#[AsHook('getFrontendModule')]`) in `InjectModuleMarkersListener`. The hook fires inside `Controller::getFrontendModule()` and receives the `ModuleModel` (with `id` and `type`) alongside the rendered HTML buffer. This allows injecting `data-contao-table="tl_module"`, `data-contao-id`, and `data-contao-label` into the first opening tag of the module's own buffer, before the theme has wrapped it in any custom structure.
+
+`Controller::getFrontendModule()` is called for:
+- All layout column modules (via `PageRegular`'s preload pass at `page/getPreloadedModules`)
+- `{{insert_module::N}}` insert-tag expansions
+- `{{ frontend_module(N) }}` Twig function calls (via `FragmentRuntime::renderModule()`)
+
+Module labels come from `$GLOBALS['TL_LANG']['FMD']` (Frontend Module Definitions), distinct from `$GLOBALS['TL_LANG']['CTE']` used for content elements.
+
+The backend JS `clp:edit` handler gains a `tl_module` branch: navigates to `?do=themes&table=tl_module&act=edit&id={N}`.
+
+**Rejected alternatives:**
+- `parseFrontendTemplate` hook + `parseTemplate` ID capture: more complex (requires a shared stack service), and `parseFrontendTemplate` is coupled to `FrontendTemplate::parse()` rather than the module pipeline.
+- Response-level HTML post-processing (like `InjectTwigContentElementMarkersListener`): infeasible without `mod_*` class markers — the Design+ theme emits only BEM classes on module wrappers.
+
+**Consequences:**
+- (+) Works for all themes regardless of whether `mod_*` CSS classes are present
+- (+) No position-based matching required — the ID is injected atomically at render time
+- (+) Covers both legacy PHP modules and Twig-first `#[AsFrontendModule]` controllers (both go through `Controller::getFrontendModule()`)
+- (-) Does not cover modules rendered via custom PHP that calls the template directly without going through `Controller::getFrontendModule()`

@@ -9,7 +9,7 @@
 
 ---
 
-## Was macht das?
+## Was macht die Erweiterung?
 
 Du öffnest einen Artikel oder ein Content Element im Backend — und rechts siehst du sofort, wie es im Frontend aussieht. Du speicherst — der Artikel wird **direkt im laufenden iFrame aktualisiert**, ohne Reload, ohne Scrollen. Du hoverst über ein Element in der Vorschau — ein Badge zeigt dir, was es ist, und ein Klick bringt dich direkt zur Bearbeitungsmaske.
 
@@ -25,7 +25,7 @@ Kein Plugin. Kein Builder. Kein Kompromiss. Einfach Contao, wie es sein sollte.
 - **Doppeltes Highlighting** — das aktive Content Element wird blau umrahmt, der zugehörige Artikel gestrichelt. So siehst du immer Kontext und Detail gleichzeitig.
 - **Immer eine Seite im iFrame** — auch wenn kein konkreter Seitenkontext aktiv ist, zeigt die Vorschau die Startseite statt leer zu bleiben.
 - **Funktioniert mit jedem Theme** — die Extension setzt alle nötigen Marker automatisch. Keine Theme-Anpassungen nötig.
-- **Sidebar frei verschiebbar** — per Drag in der Breite anpassbar, mit Zoom-Steuerung für kleine Bildschirme.
+- **Panel frei verschiebbar** — per Drag in der Breite anpassbar, mit Zoom-Steuerung für kleine Bildschirme.
 - **Bleibt beim Navigieren erhalten** — die Seitenleiste überlebt alle Backend-Navigationen, kein iFrame-Flash, kein Zustandsverlust.
 - **Kostenlos und Open Source** — LGPL-3.0, keine Lizenzkosten, keine versteckten Features.
 
@@ -112,7 +112,7 @@ ThinkDigital\ContaoLivePreview\Service\PreviewUrlResolverInterface:
 - **Content Elemente ohne CSS-ID in mehrspaltigen Layouts**: Elemente können falsch zugeordnet werden, wenn Spalten im HTML in anderer Reihenfolge erscheinen als in der DB. Workaround: CSS-ID am betroffenen Element setzen.
 - **Verschachtelte Content Elemente** (z. B. Akkordeon-Inhalte): die Positionszählung kann versetzt sein. Mit CSS-ID ist das Matching immer zuverlässig.
 - **`noMarkup`-Artikel**: iFrame-Swap und Highlighting brauchen den Standard-`id="article-{N}"`-Wrapper — `noMarkup` unterdrückt diesen.
-- **Seiten-Datensätze**: das Speichern einer Seite löst keinen iFrame-Swap aus (kein Artikel-Kontext). Ein manueller Reload der Sidebar ist nötig.
+- **Seiten-Datensätze**: das Speichern einer Seite löst keinen iFrame-Swap aus (kein Artikel-Kontext). Ein manueller Reload des Panels ist nötig.
 
 ---
 

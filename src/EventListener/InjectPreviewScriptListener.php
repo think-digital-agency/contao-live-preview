@@ -54,9 +54,9 @@ class InjectPreviewScriptListener
         //   clp:refresh   — fetch current page, swap article DOM node, then highlight
         return <<<'HTML'
 <style>
-.clp-sel{outline:2px solid #0594ff!important;outline-offset:2px;position:relative!important;z-index:9999!important}
-.clp-sel-secondary{outline:2px dashed #0594ff!important;outline-offset:2px;position:relative!important;z-index:9999!important}
-.clp-hover{outline:2px dashed #d946ef!important;outline-offset:2px;position:relative!important;z-index:9998!important}
+.clp-sel{outline:2px solid #0594ff!important;outline-offset:2px}
+.clp-sel-secondary{outline:2px dashed #0594ff!important;outline-offset:2px}
+.clp-hover{outline:2px dashed #d946ef!important;outline-offset:2px}
 .clp-badge,.clp-hover-badge{position:absolute;display:flex;align-items:center;gap:7px;color:#fff;font:700 11px/1 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;padding:7px 12px;border-radius:3px;white-space:nowrap;pointer-events:none}
 .clp-badge{background:#0594ff;z-index:2147483647}
 .clp-hover-badge{background:#d946ef;z-index:2147483647}
@@ -77,7 +77,8 @@ function findEl(sels){var r=null;for(var i=0;i<sels.length;i++){r=document.query
 function clpVisTarget(el){var cc=String(el.className||'').split(/\s+/);for(var i=0;i<cc.length;i++){if(cc[i].indexOf('col-')===0){if(el.children.length===1)return el.children[0];break;}}return el;}
 function clpClear(){if(_elVis){_elVis.classList.remove('clp-sel','clp-sel-secondary');_elVis=null;}_el=null;if(_elCeVis){_elCeVis.classList.remove('clp-sel');_elCeVis=null;}_elCe=null;if(_badge){_badge.remove();_badge=null;}if(_badgeCe){_badgeCe.remove();_badgeCe=null;}}
 function clpHoverClear(){if(_hoverElVis){_hoverElVis.classList.remove('clp-hover');_hoverElVis=null;}_hoverEl=null;if(_hoverBadge){_hoverBadge.remove();_hoverBadge=null;}}
-function clpBadgePos(b,el){var r=el.getBoundingClientRect();b.style.top=(window.scrollY+r.top+2)+'px';b.style.left=(window.scrollX+r.left+2)+'px';}
+function clpIsFixed(el){var n=el;while(n&&n!==document.body){if(getComputedStyle(n).position==='fixed')return true;n=n.parentElement;}return false;}
+function clpBadgePos(b,el){var r=el.getBoundingClientRect();if(clpIsFixed(el)){b.style.position='fixed';b.style.top=(r.top+2)+'px';b.style.left=(r.left+2)+'px';}else{b.style.position='';b.style.top=(window.scrollY+r.top+2)+'px';b.style.left=(window.scrollX+r.left+2)+'px';}}
 function _mkBadge(cls,lbl,table,editId){var b=document.createElement('div');b.className=cls;var s=document.createElement('span');s.textContent=lbl;b.appendChild(s);var btn=document.createElement('button');btn.type='button';btn.className='clp-badge-edit';btn.innerHTML=_editIcon;if(table&&editId){btn.addEventListener('click',function(ev){ev.stopPropagation();window.parent.postMessage({type:'clp:edit',table:table,id:editId},'*');});}b.appendChild(btn);document.body.appendChild(b);return b;}
 function makeBadge(lbl,t,id){return _mkBadge('clp-badge',lbl,t,id);}
 function makeHoverBadge(lbl,t,id){return _mkBadge('clp-hover-badge',lbl,t,id);}

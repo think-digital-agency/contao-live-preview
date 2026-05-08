@@ -1,7 +1,7 @@
 {
     "name": "think-digital-agency/contao-live-preview",
     "type": "contao-bundle",
-    "description": "Context-aware live frontend preview sidebar for the Contao 5 backend",
+    "description": "Live-Preview Panel für das Contao 5 Backend – Artikel, Inhaltselemente und Module direkt im iFrame anzeigen, hovern und bearbeiten.",
     "keywords": ["contao", "contao-bundle", "contao-extension", "preview", "backend"],
     "homepage": "https://github.com/think-digital-agency/contao-live-preview",
     "license": "LGPL-3.0-or-later",
@@ -21,6 +21,7 @@
         }
     },
     "extra": {
-        "contao-manager-plugin": "ThinkDigital\\ContaoLivePreview\\ContaoManager\\Plugin"
+        "contao-manager-plugin": "ThinkDigital\\ContaoLivePreview\\ContaoManager\\Plugin",
+        "logo": "docs/app-icon.png"
     }
 }
