@@ -1,8 +1,8 @@
 {
     "name": "think-digital-agency/contao-live-preview",
     "type": "contao-bundle",
-    "description": "Live-Preview Panel für das Contao 5 Backend – Artikel, Inhaltselemente und Module direkt im iFrame anzeigen, hovern und bearbeiten.",
-    "keywords": ["contao", "contao-bundle", "contao-extension", "preview", "backend"],
+    "description": "Live-Preview Panel und Frontend Editor für das Contao 5 Backend – Artikel, Inhaltselemente und Module direkt im iFrame anzeigen, hovern und bearbeiten.",
+    "keywords": ["contao", "contao-bundle", "contao-extension", "preview", "frontend editor", "frontend edit helper", "backend"],
     "homepage": "https://github.com/think-digital-agency/contao-live-preview",
     "license": "LGPL-3.0-or-later",
     "authors": [
