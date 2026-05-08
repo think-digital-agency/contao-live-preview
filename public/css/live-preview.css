@@ -85,16 +85,37 @@ body.clp-open #clp-right {
     top: 0;
     left: 0;
     bottom: 0;
-    width: 5px;
+    width: 8px;
     cursor: col-resize;
     z-index: 2;
     background: transparent;
     transition: background .15s;
 }
 
+#clp-resizer::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: rgba(128, 128, 128, .45);
+    box-shadow: 0 -8px 0 rgba(128, 128, 128, .45), 0 8px 0 rgba(128, 128, 128, .45);
+    pointer-events: none;
+    transition: background .15s, box-shadow .15s;
+}
+
 #clp-resizer:hover {
     background: var(--header-bg, #f47c00);
     opacity: .4;
+}
+
+#clp-resizer:hover::before {
+    background: #fff;
+    box-shadow: 0 -8px 0 #fff, 0 8px 0 #fff;
+    opacity: 1;
 }
 
 /* -------------------------------------------------------------------------
