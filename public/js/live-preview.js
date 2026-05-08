@@ -27,6 +27,7 @@
  *   ?do=article&table=tl_article&act=edit&id=X  → id = article
  *   ?do=article&id=X                            → id = article
  *   ?do=page&id=X                               → id = page
+ *   ?do=themes&table=tl_module&act=edit&id=X    → id = frontend module
  */
 
 (function () {
@@ -156,6 +157,8 @@
                         params = new URLSearchParams({ do: 'article', table: 'tl_content', act: 'edit', id: String(id) });
                     } else if (table === 'tl_article') {
                         params = new URLSearchParams({ do: 'article', table: 'tl_content', id: String(id) });
+                    } else if (table === 'tl_module') {
+                        params = new URLSearchParams({ do: 'themes', table: 'tl_module', act: 'edit', id: String(id) });
                     } else return;
                     const url = window.location.pathname + '?' + params.toString();
                     if (window.Turbo) { Turbo.visit(url); } else { window.location.href = url; }
