@@ -239,7 +239,11 @@
 
     function toggleSidebar() {
         isOpen = !isOpen;
+        sidebar.classList.add('clp-animate');
         applyState(true);
+        sidebar.addEventListener('transitionend', () => {
+            sidebar.classList.remove('clp-animate');
+        }, { once: true });
     }
 
     // -------------------------------------------------------------------------

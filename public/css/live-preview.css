@@ -31,19 +31,24 @@ body.clp-open #main {
 #clp-right {
     --clp-width: 420px;
 
-    display: none;
-    flex: 0 0 var(--clp-width);   /* fixed width, won't grow or shrink */
-    width: var(--clp-width);       /* fallback for non-flex contexts */
+    display: flex;
+    flex: 0 0 auto;   /* size follows width property so width alone drives the animation */
+    width: 0;         /* collapsed by default; open state sets width: var(--clp-width) */
     flex-direction: column;
 
     background: var(--body-bg, #f6f6f8);
-    border-left: 1px solid var(--content-border, #e0e0e2);
     position: relative;
     overflow: hidden;
 }
 
+/* Slide animation — only added by JS on button click, never on page restore */
+#clp-right.clp-animate {
+    transition: width 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
 body.clp-open #clp-right {
-    display: flex;
+    width: var(--clp-width);
+    border-left: 1px solid var(--content-border, #e0e0e2);
     /* Stick below the Contao fixed header; fill the remaining viewport height.
        align-self: flex-start is required — sticky does not work with stretch. */
     position: sticky;
