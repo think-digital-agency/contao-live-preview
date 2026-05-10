@@ -31,11 +31,11 @@ Kein Plugin. Kein Builder. Kein Kompromiss. Einfach Contao, wie es sein sollte.
 
 ---
 
-## Perfekt kombiniert: Design Plus Theme
+## Perfekt kombiniert: Design+ Theme
 
-Diese Extension wurde im Alltag mit dem **[Contao Design Plus Theme](https://themes.contao.org/de/index/contao-design-plus)** entwickelt und ist dort vollständig integriert. Design Plus liefert alle nötigen Marker direkt in den Templates mit — die Live Vorschau, das Hover-Highlighting und der iFrame-Swap funktionieren damit auf Anhieb, ohne jegliche Konfiguration.
+Diese Extension wurde im Alltag mit dem **[Contao Design+ Theme](https://themes.contao.org/de/index/contao-design-plus)** entwickelt und ist dort vollständig integriert. Design+ liefert alle nötigen Marker direkt in den Templates mit — die Live Vorschau, das Hover-Highlighting und der iFrame-Swap funktionieren damit auf Anhieb, ohne jegliche Konfiguration.
 
-Wer professionelle Contao-Projekte baut, bekommt mit Design Plus + Live Preview einen Workflow mit einem nativen Gefühl — bei vollem Zugriff auf das gewohnte Contao Backend.
+Wer professionelle Contao-Projekte baut, bekommt mit Design+ + Live Preview einen Workflow mit einem nativen Gefühl — bei vollem Zugriff auf das gewohnte Contao Backend.
 
 ---
 
