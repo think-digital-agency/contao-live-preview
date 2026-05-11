@@ -274,6 +274,13 @@ body.clp-open #clp-right {
     transform-origin: top left;
 }
 
+/* Hide the src-less placeholder iframe that Turbo briefly shows during body-swap
+   before the data-turbo-permanent element is moved in. Once JS sets frame.src
+   the [src] attribute is present and this rule no longer matches. */
+#clp-frame:not([src]) {
+    visibility: hidden;
+}
+
 /* -------------------------------------------------------------------------
    Toggle button in #tmenu header
    Must match: #tmenu a { padding: 13px 12px; font-size: .875rem; color: var(--header-text) }
