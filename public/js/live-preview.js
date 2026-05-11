@@ -95,6 +95,11 @@
     // Reset to false on every onPageReady so the next navigation-only highlight works.
     let refreshSent          = false;
 
+    // True from the moment a backend form is submitted until the save cycle
+    // completes (clp:refresh sent or skipped). Prevents resolveAndShow from
+    // setting frame.src while a DOM-swap is already in progress.
+    let pendingSave          = false;
+
     // -------------------------------------------------------------------------
     // Entry points
     // -------------------------------------------------------------------------
@@ -383,14 +388,20 @@
                 }
 
                 if (getCleanSrc() !== data.previewUrl) {
-                    // URL changed → navigate to new page; refreshPreview must not interrupt.
-                    frame.src = addClpParam(data.previewUrl);
-                    frameNeedsReload = false;
-                    frame.addEventListener('load', () => {
-                        // Page is now loaded — subsequent saves can trigger a partial refresh.
-                        frameNeedsReload = true;
-                        sendHighlight();
-                    }, { once: true });
+                    if (pendingSave) {
+                        // A save is in flight — clp:refresh will swap the DOM without a
+                        // full reload. Don't set frame.src now; metadata is already updated
+                        // above so the DOM-swap and highlight use fresh selectors.
+                    } else {
+                        // URL changed → navigate to new page; refreshPreview must not interrupt.
+                        frame.src = addClpParam(data.previewUrl);
+                        frameNeedsReload = false;
+                        frame.addEventListener('load', () => {
+                            // Page is now loaded — subsequent saves can trigger a partial refresh.
+                            frameNeedsReload = true;
+                            sendHighlight();
+                        }, { once: true });
+                    }
                 } else {
                     // Same URL — content may be stale after a save; allow refreshPreview.
                     frameNeedsReload = true;
@@ -423,6 +434,7 @@
     }
 
     function refreshPreview() {
+        pendingSave = false; // save cycle ends here regardless of whether refresh fires
         if (!frameNeedsReload || !currentArticleId || refreshSent) return;
         refreshSent      = true;
         frameNeedsReload = false;
@@ -549,6 +561,10 @@
 
     function handleFormSubmit(e) {
         if (!e.target.querySelector?.('[name="FORM_SUBMIT"]')) return;
+        // Block resolveAndShow from resetting frame.src during the save cycle.
+        // Safety TTL clears the flag if refreshPreview never fires (e.g. no articleId).
+        pendingSave = true;
+        setTimeout(() => { pendingSave = false; }, 3000);
         // Write state to localStorage. The refresh is driven entirely from
         // tryRehydrate() on the next onPageReady — no timer needed here.
         savePendingState();
