@@ -60,7 +60,7 @@ class InjectPreviewScriptListener
 .clp-badge,.clp-hover-badge{position:absolute;display:flex;align-items:center;gap:7px;color:#fff;font:700 11px/1 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;padding:7px 12px;border-radius:3px;white-space:nowrap;pointer-events:none}
 .clp-badge{background:#0594ff;z-index:2147483647}
 .clp-hover-badge{background:#d946ef;z-index:2147483647}
-.clp-badge-edit{all:unset;display:flex;align-items:center;cursor:pointer;opacity:.75;transition:opacity .15s;pointer-events:auto}
+.clp-badge-edit{all:unset;display:flex;align-items:center;cursor:pointer;opacity:.75;transition:opacity .15s;pointer-events:auto;padding:8px;margin:-8px}
 .clp-badge-edit:hover{opacity:1}
 </style>
 <script>(function(){
