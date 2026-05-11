@@ -152,6 +152,7 @@
             window.addEventListener('message', (e) => {
                 if (e.data?.type === 'clp:refreshed') {
                     localStorage.removeItem(LS_SAVE_KEY);
+                    pendingSave = false; // iframe confirmed DOM-swap complete
                     return;
                 }
                 if (e.data?.type === 'clp:edit') {
@@ -388,10 +389,10 @@
                 }
 
                 if (getCleanSrc() !== data.previewUrl) {
-                    if (pendingSave) {
-                        // A save is in flight — clp:refresh will swap the DOM without a
-                        // full reload. Don't set frame.src now; metadata is already updated
-                        // above so the DOM-swap and highlight use fresh selectors.
+                    if (pendingSave || refreshSent) {
+                        // A save is in flight (pendingSave) or the clp:refresh DOM-swap
+                        // already fired (refreshSent). Don't set frame.src — the swap
+                        // handles the update. Metadata above is already fresh for the highlight.
                     } else {
                         // URL changed → navigate to new page; refreshPreview must not interrupt.
                         frame.src = addClpParam(data.previewUrl);
@@ -434,7 +435,6 @@
     }
 
     function refreshPreview() {
-        pendingSave = false; // save cycle ends here regardless of whether refresh fires
         if (!frameNeedsReload || !currentArticleId || refreshSent) return;
         refreshSent      = true;
         frameNeedsReload = false;
