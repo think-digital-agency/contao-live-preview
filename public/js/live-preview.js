@@ -110,12 +110,21 @@
     function onPageReady() {
         // #clp-right is permanent — acquire refs only on the very first call.
         if (!sidebar)    sidebar    = document.getElementById('clp-right');
-        if (!frame)      frame      = document.getElementById('clp-frame');
         if (!frameWrap)  frameWrap  = document.getElementById('clp-frame-wrap');
         if (!urlDisplay) urlDisplay = document.getElementById('clp-url-display');
         if (!vwInput)    vwInput    = document.getElementById('clp-vw');
         if (!vhInput)    vhInput    = document.getElementById('clp-vh');
         if (!zoomSelect) zoomSelect = document.getElementById('clp-zoom');
+
+        // Create the iframe via JS (not in template) to prevent a white flash:
+        // Turbo briefly shows the new body's placeholder #clp-right before moving
+        // the permanent element in — a template iframe there would flash white.
+        if (!frame && frameWrap) {
+            frame = document.createElement('iframe');
+            frame.id    = 'clp-frame';
+            frame.title = 'Frontend Vorschau';
+            frameWrap.appendChild(frame);
+        }
 
         if (!sidebar || !frame) return;
 
