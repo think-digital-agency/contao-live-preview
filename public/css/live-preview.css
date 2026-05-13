@@ -124,7 +124,7 @@
     height: 44px;
     flex-shrink: 0;
     background: var(--panel-bg, #f3f3f5);
-    border-bottom: 1px solid var(--border, #eaeaec);
+    border-bottom: 1px solid var(--content-border, #d0d0d2);
 }
 
 /* Left group: URL + open-tab button — takes remaining space */
