@@ -103,6 +103,11 @@
     // setting frame.src while a DOM-swap is already in progress.
     let pendingSave          = false;
 
+    // Set by turbo:before-visit when navigating to a content-modifying action
+    // (delete, toggle, cut, paste) that doesn't go through a form submit.
+    // Consumed in onPageReady to schedule an iframe refresh after the redirect.
+    let pendingContentChange = false;
+
 
     // -------------------------------------------------------------------------
     // Entry points
@@ -135,6 +140,27 @@
         // because it may set frame.src and pre-populate currentArticleId.
         tryRehydrate();
 
+        // Non-form content change (delete, toggle, copy, cut, paste): force a full
+        // iframe reload with cache-bust so structural changes appear immediately.
+        // clp:refresh DOM-swap is intentionally skipped here — it depends on
+        // currentArticleId / articleSelectors that may be stale, and the deleted /
+        // moved element might not exist on the fresh page at all.
+        if (pendingContentChange) {
+            pendingContentChange = false;
+            const src = getCleanSrc();
+            if (src) {
+                try {
+                    const u = new URL(addClpParam(src));
+                    u.searchParams.set('_t', String(Date.now()));
+                    frame.src = u.toString();
+                } catch {
+                    frame.src = addClpParam(src);
+                }
+                frameNeedsReload = false;
+                frame.addEventListener('load', sendHighlight, { once: true });
+            }
+        }
+
         // Sync isOpen from localStorage and stamp body + sidebar.
         // turbo:before-render already stamped the incoming body, so this is a
         // no-op in the normal navigation case but handles hard reload correctly.
@@ -159,6 +185,19 @@
                 if (dup) dup.remove();
             });
 
+            // Detect content-modifying GET navigations that bypass the form-submit path.
+            // The flag is consumed in onPageReady after Contao redirects back to the list.
+            // copy/copyAll: Contao creates the record immediately, then redirects to edit —
+            //   the iframe must refresh to show the new element before the user saves it.
+            document.addEventListener('turbo:before-visit', (e) => {
+                try {
+                    const act = new URL(e.detail.url).searchParams.get('act') || '';
+                    if (['delete', 'deleteAll', 'copy', 'copyAll', 'cut', 'cutAll', 'toggle', 'toggleAll', 'paste', 'pasteAll'].includes(act)) {
+                        pendingContentChange = true;
+                    }
+                } catch {}
+            });
+
             document.addEventListener('submit', handleFormSubmit);
 
             // clp:refreshed from the iframe confirms the DOM swap completed.
@@ -181,6 +220,24 @@
                         params = new URLSearchParams({ do: 'themes', table: 'tl_module', act: 'edit', id: String(id) });
                     } else return;
                     const url = window.location.pathname + '?' + params.toString();
+                    if (window.Turbo) { Turbo.visit(url); } else { window.location.href = url; }
+                }
+                if (e.data?.type === 'clp:duplicate') {
+                    const id = e.data.id;
+                    if (!id) return;
+                    const rt   = window.Contao?.request_token || window.Contao?.requestToken || '';
+                    const doV  = new URLSearchParams(window.location.search).get('do') || 'article';
+                    const params = new URLSearchParams({ do: doV, table: 'tl_content', act: 'copy', mode: '4', id: String(id), rt });
+                    const url  = window.location.pathname + '?' + params.toString();
+                    if (window.Turbo) { Turbo.visit(url); } else { window.location.href = url; }
+                }
+                if (e.data?.type === 'clp:insert-after') {
+                    const id = e.data.id;
+                    if (!id) return;
+                    const rt   = window.Contao?.request_token || window.Contao?.requestToken || '';
+                    const doV  = new URLSearchParams(window.location.search).get('do') || 'article';
+                    const params = new URLSearchParams({ do: doV, table: 'tl_content', act: 'create', mode: '4', pid: String(id), rt });
+                    const url  = window.location.pathname + '?' + params.toString();
                     if (window.Turbo) { Turbo.visit(url); } else { window.location.href = url; }
                 }
             });
