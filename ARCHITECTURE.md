@@ -11,7 +11,7 @@ packages/contao-live-preview-bundle/
 │   ├── css/
 │   │   └── live-preview.css                    # Sidebar layout & styles
 │   └── js/
-│       └── live-preview.js                     # Context detection, iframe, save hooks, clp:edit
+│       └── live-preview.js                     # Context detection, iframe, save hooks, clp:edit/duplicate/insert-after
 ├── src/
 │   ├── ContaoLivePreviewBundle.php             # Bundle entry point
 │   ├── ContaoManager/
@@ -164,6 +164,8 @@ Injected before `</body>` on every `?_clp=1` frontend response. Handles:
 |---|---|---|
 | `clp:refreshed` | postMessage to parent | After DOM swap (or on fetch error). |
 | `clp:edit` | postMessage to parent | Click on edit icon in any badge (active or hover). Payload: `{ table, id }`. |
+| `clp:duplicate` | postMessage to parent | Click on ⧉ duplicate icon in active CE badge. Payload: `{ id }`. Backend navigates to `act=copy&mode=4`. |
+| `clp:insert-after` | postMessage to parent | Click on + new-after icon in active CE badge. Payload: `{ id }`. Backend navigates to `act=create&mode=4`. |
 
 **Hover highlighting:** `mouseover` / `mouseout` on `document` detect any `[data-contao-table]` element under the cursor and show a fuchsia dashed outline + badge. Active (blue) elements are excluded. Hover badge stays visible when cursor moves over it (edit icon is clickable). Same-origin link clicks are intercepted to preserve `?_clp=1` across iframe navigation.
 

@@ -21,6 +21,8 @@ Kein Plugin. Kein Builder. Kein Kompromiss. Einfach Contao, wie es sein sollte.
 
 - **Live Vorschau im Backend** — öffnest du eine Seite, einen Artikel oder ein Content Element, zeigt die Seitenleiste sofort die passende Frontend-Seite. Ohne Konfiguration, ohne Klick.
 - **Kein Reload nach dem Speichern** — nur der bearbeitete Artikel wird direkt im iFrame ausgetauscht. Scroll-Position bleibt, kein Flackern, natives Gefühl.
+- **Automatische Aktualisierung bei Strukturänderungen** — löscht, dupliziert, verschiebt oder versteckt du ein Element, lädt der iFrame nach der Backend-Weiterleitung automatisch neu. Kein zweites Neuladen nötig.
+- **Schnelle Aktionen im Badge** — das aktive Content-Element-Badge zeigt direkt Schaltflächen zum Duplizieren (⧉) und zum Einfügen eines neuen Elements danach (+). Ein Klick, keine Suche im Backend.
 - **Hover-Inspektion** — fahre mit der Maus über Artikel oder Content Elemente in der Vorschau. Ein farbiges Badge zeigt Typ und Name — Klick auf den Stift öffnet die Bearbeitungsmaske direkt.
 - **Doppeltes Highlighting** — das aktive Content Element wird blau umrahmt, der zugehörige Artikel gestrichelt. So siehst du immer Kontext und Detail gleichzeitig.
 - **Immer eine Seite im iFrame** — auch wenn kein konkreter Seitenkontext aktiv ist, zeigt die Vorschau die Startseite statt leer zu bleiben.
@@ -42,7 +44,7 @@ Wer professionelle Contao-Projekte baut, bekommt mit Contao Design+ + Live Previ
 ## Voraussetzungen
 
 - PHP 8.2 oder höher
-- Contao 5.3 oder höher
+- Contao 5.3 oder höher (Contao 5.7+ empfohlen)
 
 ---
 

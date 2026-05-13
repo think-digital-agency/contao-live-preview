@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-- Contao 5.5+ with Symfony 7.x
+- Contao 5.3+ with Symfony 7.x (Contao 5.7+ recommended)
 - PHP 8.4 (this project uses `php:8.4-fpm-alpine` via Docker)
 - Composer 2.x
 

@@ -64,27 +64,31 @@ Non-routable page types (`error_404`, `error_403`, `folder`, `root`) are handled
 
 ---
 
-## ADR-004: Sidebar as flex child of `#container` with `data-turbo-permanent`
+## ADR-004: Sidebar on `<html>` with `position: fixed`, layout shift via `padding-right`
 
-**Date:** 2026-05 (revised from original 2025-05-03)  
-**Status:** Accepted
+**Date:** 2026-05 (revised 2026-05)  
+**Status:** Accepted — supersedes earlier flex-child approach
 
 **Context:**
-The original implementation used `position: fixed` on the sidebar with `margin-right` on `#wrapper`. This had two problems:
-1. Contao's `#container` is `display: flex` with `#left` (nav) and `#main` (content) as children. A fixed-positioned sidebar doesn't participate in this flex flow, causing layout overlap.
-2. Turbo's body swap destroyed and recreated the sidebar on every navigation, causing the iframe to blank out.
+Earlier revisions injected the sidebar as a third flex child of Contao's `#container`, relying on `data-turbo-permanent` to survive Turbo body swaps. Two problems emerged:
+1. `data-turbo-permanent` requires the element to stay in `<body>`. Turbo moves it to each incoming body, but a full page reload (triggered when fingerprinted assets change) destroys the entire DOM including permanent elements — the iframe blanked out.
+2. The flex-child approach caused `#left` (nav column) to compress when the sidebar opened.
 
 **Decision:**
-1. Inject the sidebar as a third flex child of `#container` (after `</main>`). CSS adjustments: `#left` gets `flex-shrink: 0`, `#main` gets `flex: 1 1 0%` and `width: auto !important`.
-2. Mark the sidebar `<aside>` with `data-turbo-permanent`. Turbo moves the element (with its live iframe) to every new body — the preview never blanks during navigation.
-3. Use a `turbo:before-render` listener to pre-stamp `clp-open` on the incoming body, preventing a one-paint flash where the sidebar would be `display: none`.
+1. Inject the sidebar HTML after `</main>` via the `outputBackendTemplate` hook (template injects it inside `<body>` for initial render).
+2. On first JS execution, move `#clp-right` from `<body>` to `document.documentElement` (`<html>`). `<html>` is never replaced by Turbo body swaps — the sidebar and its live iframe are untouchable by navigation.
+3. A `turbo:before-render` listener strips any server-injected duplicate `#clp-right` from the incoming body before Turbo inserts it, preventing a ghost sidebar on every navigation.
+4. The sidebar uses `position: fixed; top: 0; right: 0; bottom: 0` and is always the full viewport height.
+5. When open (desktop ≥ 1201px), both `#header` and `#container` receive `padding-right: var(--clp-saved-width)` so neither overlaps with the sidebar. Both use a CSS transition when the `clp-animate` class is present.
+6. A `window.__clpLoaded` guard prevents the IIFE from executing a second time if the script ever appears in a body context.
 
 **Consequences:**
-- (+) Sidebar participates in the flex layout — `#left` never compresses, only `#main` shrinks
-- (+) iframe content survives every navigation — no blank flash
-- (+) Resize handle uses Pointer Events + `setPointerCapture` — drag works even when cursor leaves the browser window
-- (-) Depends on Contao's `#container` being `display: flex` with the specific `#left`/`#main` structure (verified for Contao 5.7)
-- (-) On screens < 1200px the sidebar switches to `position: fixed` overlay to avoid crushing `#main` below usable width
+- (+) Sidebar survives full page reloads — iframe never blanks
+- (+) `#header` and `#container` shift together, creating a clean full-height split
+- (+) `position: fixed` makes the sidebar independent of scroll position — stays visible on long pages
+- (+) No dependency on Contao's `#container` flex structure
+- (-) Moving the element to `<html>` is non-standard; relies on browsers accepting arbitrary children on `<html>` (all modern browsers do)
+- (-) On screens ≤ 1200px the sidebar is a full overlay (no layout shift) — acceptable at small widths
 
 ---
 
@@ -355,7 +359,7 @@ Extract into `Service\LabelCleanerTrait` with two methods: `cleanLabel(string): 
 
 ---
 
-## ADR-016: Frontend module hover-edit via `getFrontendModule` hook
+## ADR-017: Frontend module hover-edit via `getFrontendModule` hook
 
 **Date:** 2026-05
 **Status:** Accepted
@@ -386,3 +390,81 @@ The backend JS `clp:edit` handler gains a `tl_module` branch: navigates to `?do=
 - (+) No position-based matching required — the ID is injected atomically at render time
 - (+) Covers both legacy PHP modules and Twig-first `#[AsFrontendModule]` controllers (both go through `Controller::getFrontendModule()`)
 - (-) Does not cover modules rendered via custom PHP that calls the template directly without going through `Controller::getFrontendModule()`
+
+---
+
+## ADR-018: Badge quick-action buttons (duplicate, new-after) for `tl_content`
+
+**Date:** 2026-05
+**Status:** Accepted
+
+**Context:**
+Editors frequently duplicate a content element or insert a new one after an existing one. Both require navigating through the Contao backend list, finding the correct row, and clicking the action icon — several clicks away when already looking at the element in the preview.
+
+**Decision:**
+Add two icon buttons directly to the active-CE badge (`.clp-badge`) for `tl_content` elements, rendered by `_mkBadge()` in `InjectPreviewScriptListener`:
+- **⧉ Duplicate** (`clp:duplicate`): builds `act=copy&mode=4&id={id}` and fires `Turbo.visit()`
+- **+ New after** (`clp:insert-after`): builds `act=create&mode=4&pid={id}` and fires `Turbo.visit()`
+
+The buttons send postMessages to the parent backend window. The `live-preview.js` message handler resolves the Contao `request_token` via `window.Contao.request_token` (with `requestToken` camelCase fallback for older versions) and appends it to the URL as `rt=`.
+
+The `turbo:before-visit` listener detects these navigations (`act=copy`, `act=create`) as content-modifying and sets `pendingContentChange = true`, ensuring the iframe reloads on the subsequent `onPageReady`.
+
+**Consequences:**
+- (+) One-click duplicate and new-from-preview, without leaving the current backend view
+- (+) CSRF token (`rt`) correctly attached — Contao rejects the request otherwise
+- (+) Auto-refresh after the redirect — no stale iframe after the action
+- (-) Only rendered for `tl_content` — other tables (tl_article, tl_module) don't get quick-action buttons
+- (-) Buttons only appear on the active badge, not the hover badge — intentional to keep hover non-destructive
+
+---
+
+## ADR-019: `pendingContentChange` flag for content-modifying GET navigations
+
+**Date:** 2026-05
+**Status:** Accepted
+
+**Context:**
+Contao's delete, toggle, cut, paste, and copy actions are plain GET requests (no form submit). The existing save-cycle mechanism (`handleFormSubmit` → `pendingSave` → `clp:refresh`) only fires for POST form submissions. After a GET action, Contao redirects back to the list page, but the iframe still shows stale content — the deleted/moved/toggled element remains visible until the next unrelated save.
+
+The `clp:refresh` DOM-swap path was not suitable here: it depends on `currentArticleId` and `articleSelectors` that may point to a now-deleted element; replying on the stale selectors could silently do nothing or swap in the wrong node.
+
+**Decision:**
+1. A `turbo:before-visit` listener inspects the URL of every Turbo navigation. If `act` is one of `delete`, `deleteAll`, `copy`, `copyAll`, `cut`, `cutAll`, `toggle`, `toggleAll`, `paste`, `pasteAll`, the flag `pendingContentChange` is set to `true`.
+2. In `onPageReady()`, after `tryRehydrate()`, if the flag is set: reset it, build a fresh iframe URL from `getCleanSrc()` with a `_t=Date.now()` cache-buster, and assign directly to `frame.src`. Then attach a one-time `load` handler to fire `sendHighlight`.
+3. The cache-buster prevents the browser from serving the cached response that still contains the old element.
+
+**Consequences:**
+- (+) Iframe updates on the first automatic refresh — no second manual reload needed
+- (+) Full iframe reload is unconditionally reliable regardless of which selectors were active
+- (+) Covers all content-modifying GET actions, not just delete
+- (-) Full reload (flash) instead of seamless DOM swap — acceptable since the page structure changed anyway
+- (-) Drag-and-drop reordering (plain XHR, no Turbo navigation) is not covered — rare edge case, acceptable to leave uncovered
+
+---
+
+## ADR-020: CSS variable chaining for Contao header version compatibility
+
+**Date:** 2026-05
+**Status:** Accepted
+
+**Context:**
+Contao 5.7.4 redesigned the backend header from an orange bar (`--header-bg: #f47c00`) to a white bar (`--header-bg: #fff`) and removed the `--header-text` CSS custom property entirely. The toggle button had been styled with `color: var(--header-text, #fff)` — on the new white header this rendered as white text on white background (invisible).
+
+**Decision:**
+Use CSS custom property chaining as an implicit version detector — no JS, no media queries, no version checks:
+
+```css
+color: var(--header-text, var(--text, #222));
+background-color: var(--header-bg-hover, var(--nav-bg-hover, #eaeaec));
+```
+
+- `--header-text` is defined in Contao ≤ 5.7.3 (value: `#fff`) → white text on orange, dark hover overlay
+- `--header-text` is absent in Contao ≥ 5.7.4 → CSS falls through to `--text` (`#222`) → dark text on white, light grey hover
+
+The button shape (pill `border-radius: 20px`, `padding: 8px 12px`) matches Contao 5.7.4's new `#tmenu a` style. On older versions the pill renders slightly differently from the native items but remains fully readable.
+
+**Consequences:**
+- (+) Zero configuration — works on both versions automatically
+- (+) No version number checks — adapts to whatever the installed Contao provides
+- (-) If a future Contao version reintroduces `--header-text` with a different meaning, the fallback chain would misbehave — low risk given the variable was removed, not repurposed
