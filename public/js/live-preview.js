@@ -8,14 +8,15 @@
  *   - Global event listeners (on document/window) survive body swap and
  *     must NOT be re-added on every render
  *
- * #clp-right carries data-turbo-permanent so Turbo moves it (with its live
- * iframe) to every new body — the preview never blanks during navigation.
+ * #clp-right is moved from <body> to <html> (document.documentElement) on the
+ * very first DOMContentLoaded. Turbo only swaps <body>, so the sidebar (and its
+ * live iframe) are never touched during navigation — no involuntary iframe reload.
  *
- * turbo:before-render pre-applies body.clp-open to the *incoming* body so
- * the sidebar is never momentarily display:none during the swap.
+ * turbo:before-render pre-applies body.clp-open to the *incoming* body so the
+ * layout padding is never momentarily absent during the swap.
  *
  * Save → backend navigation → two possible paths:
- *   A. Turbo body-swap (normal): iframe survives via data-turbo-permanent.
+ *   A. Turbo body-swap (normal): sidebar/iframe survive outside <body>.
  *      refreshPreview() fires at 900ms via the form-submit timer.
  *   B. Full page reload (e.g. after deployment, when data-turbo-track="reload"
  *      assets change): iframe is recreated empty. The rehydration system
@@ -33,6 +34,12 @@
 (function () {
     'use strict';
 
+    // Guard: Turbo re-evaluates <script> tags in the new <body> on every navigation.
+    // Moving the script to <head> (see InjectLivePreviewListener) prevents this, but
+    // this guard is a second line of defence in case the tag ever ends up in <body> again.
+    if (window.__clpLoaded) return;
+    window.__clpLoaded = true;
+
     const RESOLVE_ENDPOINT = '/contao/live-preview/resolve';
     const UNRESOLVED       = {};          // sentinel — distinct from null ("showing fallback")
     const LS_OPEN_KEY      = 'clp_sidebar_open';
@@ -45,7 +52,7 @@
     const SAVE_STATE_TTL   = 30_000; // ms — discard stale state after 30 s
 
     // -------------------------------------------------------------------------
-    // DOM references — acquired once; survive Turbo nav via data-turbo-permanent
+    // DOM references — acquired once; survive Turbo nav (sidebar lives on <html>)
     // -------------------------------------------------------------------------
     let sidebar, frame, frameWrap, urlDisplay, vwInput, vhInput, zoomSelect;
 
@@ -84,10 +91,6 @@
     let currentArticleId    = null;
     let currentArticleTitle = null;
 
-    // 'smooth' for article context (user navigated to a different article — animate the scroll).
-    // 'instant' for content-element context and after saves (position barely changes — no animation).
-    let scrollBehavior = 'smooth';
-
     let globalListenersBound = false;
     let refreshTimer         = null;
     // True after the first clp:refresh fires for the current page load.
@@ -100,6 +103,7 @@
     // setting frame.src while a DOM-swap is already in progress.
     let pendingSave          = false;
 
+
     // -------------------------------------------------------------------------
     // Entry points
     // -------------------------------------------------------------------------
@@ -108,8 +112,13 @@
     document.addEventListener('turbo:render', onPageReady);
 
     function onPageReady() {
-        // #clp-right is permanent — acquire refs only on the very first call.
-        if (!sidebar)    sidebar    = document.getElementById('clp-right');
+        // Acquire refs on first call; move sidebar to <html> so Turbo never touches it.
+        if (!sidebar) {
+            sidebar = document.getElementById('clp-right');
+            if (sidebar) {
+                document.documentElement.appendChild(sidebar);
+            }
+        }
         if (!frame)      frame      = document.getElementById('clp-frame');
         if (!frameWrap)  frameWrap  = document.getElementById('clp-frame-wrap');
         if (!urlDisplay) urlDisplay = document.getElementById('clp-url-display');
@@ -126,12 +135,13 @@
         // because it may set frame.src and pre-populate currentArticleId.
         tryRehydrate();
 
-        // Sync isOpen from localStorage and stamp the current body.
+        // Sync isOpen from localStorage and stamp body + sidebar.
         // turbo:before-render already stamped the incoming body, so this is a
         // no-op in the normal navigation case but handles hard reload correctly.
         const saved = localStorage.getItem(LS_OPEN_KEY);
         isOpen = saved !== null ? saved === '1' : window.innerWidth >= 1400;
         document.body.classList.toggle('clp-open', isOpen);
+        if (sidebar) sidebar.classList.toggle('clp-open', isOpen);
 
         // #tmenu is in the replaced body — re-inject the toggle button every nav.
         injectToggleButton();
@@ -140,9 +150,13 @@
             globalListenersBound = true;
 
             // Pre-apply clp-open to the *incoming* body before Turbo swaps it in.
-            // Without this, body.clp-open is absent for one paint → sidebar flash.
+            // Without this, body.clp-open is absent for one paint → layout flash.
+            // Also strip the server-injected #clp-right from every incoming body —
+            // our sidebar lives on <html> and must not be duplicated on every nav.
             document.addEventListener('turbo:before-render', (e) => {
                 e.detail.newBody.classList.toggle('clp-open', isOpen);
+                const dup = e.detail.newBody.querySelector('#clp-right');
+                if (dup) dup.remove();
             });
 
             document.addEventListener('submit', handleFormSubmit);
@@ -231,6 +245,7 @@
 
     function applyState(andResolve = true) {
         document.body.classList.toggle('clp-open', isOpen);
+        if (sidebar) sidebar.classList.toggle('clp-open', isOpen);
         localStorage.setItem(LS_OPEN_KEY, isOpen ? '1' : '0');
 
         const btn = document.getElementById('clp-toggle-btn');
@@ -246,9 +261,11 @@
     function toggleSidebar() {
         isOpen = !isOpen;
         sidebar.classList.add('clp-animate');
+        document.body.classList.add('clp-animate');
         applyState(true);
         sidebar.addEventListener('transitionend', () => {
             sidebar.classList.remove('clp-animate');
+            document.body.classList.remove('clp-animate');
         }, { once: true });
     }
 
@@ -279,6 +296,10 @@
 
         if (doV === 'page' && id > 0) {
             return { table: 'tl_page', id };
+        }
+
+        if (tbl === 'tl_module' && act === 'edit' && id > 0) {
+            return { table: 'tl_module', id };
         }
 
         return null;
@@ -313,6 +334,7 @@
         try {
             const u = new URL(frame.src);
             u.searchParams.delete('_clp');
+            u.searchParams.delete('_t');
             return u.toString();
         } catch {
             return frame.src;
@@ -334,7 +356,7 @@
     function sendHighlight(behavior) {
         if (!highlightSelectors.length || !frame?.contentWindow) return;
         // When called as a load event listener, behavior is an Event object — ignore it.
-        const b = (behavior === 'instant' || behavior === 'smooth') ? behavior : scrollBehavior;
+        const b = (behavior === 'instant' || behavior === 'smooth') ? behavior : 'smooth';
         const isCe = currentContext?.table === 'tl_content';
         // CE label: DCA label or raw type, always uppercase (e.g. "ICON LISTE", "TEXT")
         const ceLabel = isCe
@@ -357,6 +379,14 @@
     }
 
     async function resolveAndShow(ctx) {
+        // Module context: no resolver call, no URL change — iframe already shows a
+        // relevant page. On save, refreshPreview() will do a full iframe reload.
+        if (ctx?.table === 'tl_module') {
+            if (!getCleanSrc()) { return resolveAndShow(null); }
+            frameNeedsReload = true;
+            return;
+        }
+
         const params = ctx
             ? new URLSearchParams({ table: ctx.table, id: String(ctx.id) })
             : new URLSearchParams();
@@ -377,10 +407,6 @@
                 currentArticleTitle       = data.articleTitle        || null;
                 currentContentElementType  = data.contentElementType  || null;
                 currentContentElementLabel = data.contentElementLabel || null;
-                // Smooth scroll when navigating to a different article; instant when
-                // switching between content elements (position barely changes).
-                scrollBehavior = ctx?.table === 'tl_content' ? 'instant' : 'smooth';
-
                 if (urlDisplay) urlDisplay.textContent = data.previewUrl;
                 const openBtn = document.getElementById('clp-open-tab');
                 if (openBtn) {
@@ -404,9 +430,10 @@
                         }, { once: true });
                     }
                 } else {
-                    // Same URL — content may be stale after a save; allow refreshPreview.
+                    // Same page — animate scroll so the user can follow the element change.
+                    // Content may be stale after a save; allow refreshPreview.
                     frameNeedsReload = true;
-                    // Send highlight only for navigation-only (no pending save).
+                    // Send highlight only for navigation (no pending save).
                     // If a save is pending, clp:refresh (from tryRehydrate) handles the
                     // highlight. Check localStorage directly — more reliable than refreshTimer
                     // which may have already fired by the time this async fn returns.
@@ -435,14 +462,33 @@
     }
 
     function refreshPreview() {
-        if (!frameNeedsReload || !currentArticleId || refreshSent) return;
+        if (!frameNeedsReload || refreshSent) return;
         refreshSent      = true;
         frameNeedsReload = false;
 
-        // Send clp:refresh to the iframe. The injected frontend script will:
-        //   1. fetch(window.location.href) — same-origin, no CORS
+        if (!currentArticleId) {
+            // Module / page / unknown context: full iframe reload.
+            // (No article selector to target, and modules can affect any element on the page.)
+            // Add _t= cache-buster so repeated saves always fetch fresh content even
+            // when the browser has cached the URL under max-age=60.
+            const src = getCleanSrc();
+            if (src) {
+                try {
+                    const u = new URL(addClpParam(src));
+                    u.searchParams.set('_t', String(Date.now()));
+                    frame.src = u.toString();
+                } catch {
+                    frame.src = addClpParam(src);
+                }
+                frame.addEventListener('load', sendHighlight, { once: true });
+            }
+            return;
+        }
+
+        // Article / CE: partial DOM swap via clp:refresh (scroll position preserved).
+        //   1. fetch(window.location.href, {cache:'no-store'}) — always fresh
         //   2. DOMParser extracts the article node from the response
-        //   3. Replaces the live DOM node (scroll position stays intact)
+        //   3. Replaces the live DOM node
         //   4. Applies highlight, then posts clp:refreshed back
         try {
             frame.contentWindow.postMessage({
@@ -470,7 +516,7 @@
     // -------------------------------------------------------------------------
 
     function savePendingState() {
-        if (!currentArticleId || !getCleanSrc()) return; // nothing worth saving
+        if (!getCleanSrc()) return; // need at least an iframe URL; articleId may be null (full-reload path)
 
         let scrollX = 0, scrollY = 0;
         try { scrollX = frame.contentWindow.scrollX || 0; } catch { }
@@ -596,6 +642,7 @@
             const maxW   = Math.max(MIN_WIDTH, window.innerWidth - leftW - 660);
             finalW = Math.round(Math.min(maxW, Math.max(MIN_WIDTH, w)));
             sidebar.style.setProperty('--clp-width', finalW + 'px');
+            document.documentElement.style.setProperty('--clp-saved-width', finalW + 'px');
             localStorage.setItem(LS_WIDTH_KEY, String(finalW));
             if (vwInput) { vwInput.value = finalW; vwInput.disabled = false; }
         }

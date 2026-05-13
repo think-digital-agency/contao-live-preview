@@ -1,8 +1,10 @@
 /*
  * Contao Live Preview – sidebar stylesheet
  *
- * Layout: #clp-right is a flex sibling of #main inside #container (display:flex).
- * Only #main shrinks — #left (nav) and #clp-right keep their fixed widths.
+ * Layout: #clp-right is position:fixed on the right edge of the viewport.
+ * JS moves it from <body> to <html> on first load so Turbo never touches it
+ * during body-swap navigation — the iframe never reloads involuntarily.
+ * body.clp-open adds padding-right (desktop only) so content isn't hidden under it.
  *
  * Contao CSS variables (flexible theme):
  *   --header-bg, --header-bg-hover, --header-text
@@ -11,34 +13,46 @@
  */
 
 /* -------------------------------------------------------------------------
-   Flex layout fixes when preview is open.
-   Contao sets #left { width: 220px } and #main { width: calc(100% - 220px) }.
-   We need #left to stay fixed and only #main to compress.
+   Layout adjustment when preview is open — desktop only.
+   On ≤1200px the sidebar is a full overlay; no layout change needed.
+   Both #header (position:fixed) and #container are pushed left so the
+   sidebar creates a complete visual split from top to bottom.
    ------------------------------------------------------------------------- */
-body.clp-open #left {
-    flex-shrink: 0; /* left nav must not compress */
-}
-
-body.clp-open #main {
-    flex: 1 1 0%;
-    min-width: 0; /* allow compressing below content width */
-    width: auto !important; /* override Contao's calc(100% - 220px) */
+@media (min-width: 1201px) {
+    body.clp-open #header {
+        padding-right: var(--clp-saved-width, 420px);
+    }
+    body.clp-animate #header {
+        transition: padding-right 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    body.clp-open #container {
+        padding-right: var(--clp-saved-width, 420px);
+    }
+    body.clp-animate #container {
+        transition: padding-right 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    body.clp-open #left {
+        flex-shrink: 0;
+    }
 }
 
 /* -------------------------------------------------------------------------
-   Sidebar shell
+   Sidebar shell — always position:fixed, lives on <html> (outside Turbo).
    ------------------------------------------------------------------------- */
 #clp-right {
-    --clp-width: 420px;
+    --clp-width: var(--clp-saved-width, 420px);
 
-    display: flex;
-    flex: 0 0 auto;   /* size follows width property so width alone drives the animation */
-    width: 0;         /* collapsed by default; open state sets width: var(--clp-width) */
-    flex-direction: column;
-
-    background: var(--body-bg, #f6f6f8);
-    position: relative;
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 0;         /* collapsed; open state sets width: var(--clp-width) */
     overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    background: var(--body-bg, #f6f6f8);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    z-index: 100;
 }
 
 /* Slide animation — only added by JS on button click, never on page restore */
@@ -46,40 +60,18 @@ body.clp-open #main {
     transition: width 0.28s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-body.clp-open #clp-right {
+#clp-right.clp-open {
     width: var(--clp-width);
     border-left: 1px solid var(--content-border, #e0e0e2);
-    /* Stick below the Contao fixed header; fill the remaining viewport height.
-       align-self: flex-start is required — sticky does not work with stretch. */
-    position: sticky;
-    top: 0; /* Sticks only after the Contao header was scrolled out of the viewport */
-    align-self: flex-start;
-    height: 100vh;
+    box-shadow: -4px 0 16px rgba(0, 0, 0, .15);
 }
 
-/* On narrow screens: overlay (position:fixed) to avoid crushing #main */
+/* No resizing in overlay mode (≤1200px) — width is controlled automatically */
 @media (max-width: 1200px) {
-    body.clp-open #main {
-        width: auto !important;
-    }
-    #clp-right {
-        position: fixed;
-        top: 40px; /* Contao header height */
-        right: 0;
-        bottom: 0;
-        z-index: 100;
-        box-shadow: -4px 0 16px rgba(0, 0, 0, .2);
-    }
-    /* No resizing in overlay mode — width is controlled automatically */
     #clp-resizer {
         pointer-events: none;
         cursor: default;
     }
-}
-
-/* Restore saved width from localStorage on first paint */
-#clp-right {
-    --clp-width: var(--clp-saved-width, 420px);
 }
 
 /* -------------------------------------------------------------------------
@@ -129,7 +121,7 @@ body.clp-open #clp-right {
 #clp-toolbar {
     display: flex;
     align-items: center;
-    height: 36px;
+    height: 40px;
     flex-shrink: 0;
     background: var(--panel-bg, #f3f3f5);
     border-bottom: 1px solid var(--border, #eaeaec);
@@ -274,9 +266,7 @@ body.clp-open #clp-right {
     transform-origin: top left;
 }
 
-/* Hide the src-less placeholder iframe that Turbo briefly shows during body-swap
-   before the data-turbo-permanent element is moved in. Once JS sets frame.src
-   the [src] attribute is present and this rule no longer matches. */
+/* Hide the src-less iframe on initial page load, before JS sets frame.src. */
 #clp-frame:not([src]) {
     visibility: hidden;
 }

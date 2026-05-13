@@ -15,7 +15,7 @@ use Symfony\Component\HttpKernel\KernelEvents;
  *
  * Only fires for frontend HTML responses — never for backend, JSON, or assets.
  */
-#[AsEventListener(event: KernelEvents::RESPONSE, priority: -200)]
+#[AsEventListener(event: KernelEvents::RESPONSE, priority: -300)]
 class InjectPreviewScriptListener
 {
     public function __invoke(ResponseEvent $event): void
@@ -44,6 +44,14 @@ class InjectPreviewScriptListener
         }
 
         $response->setContent(str_replace('</body>', $this->buildInjection() . '</body>', $content));
+
+        // Allow the browser to cache _clp=1 responses for 60 s.
+        // Turbo body-swaps reload the iframe involuntarily (Chrome reloads iframes
+        // when their parent moves in the DOM); with a warm cache the reload resolves
+        // from disk in < 5 ms, making the flash imperceptible.
+        // clp:refresh still fetches fresh HTML for the article DOM-swap.
+        $response->headers->set('Cache-Control', 'private, max-age=60');
+        $response->headers->remove('Pragma');
     }
 
     private function buildInjection(): string
@@ -126,7 +134,7 @@ window.addEventListener('message',function(e){
     var scrollX=window.scrollX,scrollY=window.scrollY;
     if(_refreshAbort){_refreshAbort.abort();}
     _refreshAbort=('AbortController'in window)?new AbortController():null;
-    var fetchOpts={credentials:'same-origin',headers:{'X-Requested-With':'XMLHttpRequest'}};
+    var fetchOpts={credentials:'same-origin',cache:'no-store',headers:{'X-Requested-With':'XMLHttpRequest'}};
     if(_refreshAbort){fetchOpts.signal=_refreshAbort.signal;}
     fetch(window.location.href,fetchOpts)
       .then(function(r){return r.text();})
@@ -135,7 +143,7 @@ window.addEventListener('message',function(e){
         var doc=new DOMParser().parseFromString(html,'text/html');
         var fresh=null,live=null;
         for(var i=0;i<selectors.length;i++){var f=doc.querySelector(selectors[i]);var l=document.querySelector(selectors[i]);if(f&&l){fresh=f;live=l;break;}}
-        if(fresh&&live){live.replaceWith(fresh);window.scrollTo({top:scrollY,left:scrollX,behavior:'instant'});var el=findEl(selectors);if(el)highlight(el,'instant',label,'tl_article',_articleId);}
+        if(fresh&&live){for(var ai=0;ai<fresh.attributes.length;ai++){live.setAttribute(fresh.attributes[ai].name,fresh.attributes[ai].value);}live.innerHTML=fresh.innerHTML;var el=findEl(selectors);if(el){var vis=clpVisTarget(el);clpClear();_el=el;_elVis=vis;vis.classList.add('clp-sel');if(label){_badge=makeBadge(label,'tl_article',_articleId);clpBadgePos(_badge,vis);}}}
         window.parent.postMessage({type:'clp:refreshed',articleId:articleId},'*');
       })
       .catch(function(err){

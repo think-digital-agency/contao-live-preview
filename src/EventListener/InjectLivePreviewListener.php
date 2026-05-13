@@ -59,18 +59,18 @@ class InjectLivePreviewListener
         $cssHref = htmlspecialchars($this->packages->getUrl('bundles/contaolivepreview/css/live-preview.css'), \ENT_QUOTES, 'UTF-8') . '?v=' . $cssVer;
         $jsHref  = htmlspecialchars($this->packages->getUrl('bundles/contaolivepreview/js/live-preview.js'), \ENT_QUOTES, 'UTF-8') . '?v=' . $jsVer;
         $cssTag  = '<link rel="stylesheet" href="' . $cssHref . '">';
+        // Script goes in <head> so Turbo deduplicates it and never re-executes it on
+        // body-swap navigation. A body script would spawn a new IIFE instance on every
+        // Turbo navigation, corrupting state and causing conflicting event listeners.
         $jsTag   = '<script src="' . $jsHref . '" defer></script>';
 
-        // Inject CSS into <head>
-        $buffer = str_replace('</head>', $cssTag . "\n</head>", $buffer);
+        // Inject CSS + JS into <head>
+        $buffer = str_replace('</head>', $cssTag . "\n" . $jsTag . "\n</head>", $buffer);
 
         // Inject <aside> inside #container, right after </main>.
         // Contao's be_main renders </main> followed (after whitespace) by </div> for #container.
         // Inserting after </main> places the aside as the last flex child of #container.
         $buffer = str_replace('</main>', '</main>' . "\n" . $sidebarHtml, $buffer);
-
-        // Inject JS before </body>
-        $buffer = str_replace('</body>', $jsTag . "\n</body>", $buffer);
 
         return $buffer;
     }
