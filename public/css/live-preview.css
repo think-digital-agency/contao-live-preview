@@ -278,33 +278,33 @@
    ------------------------------------------------------------------------- */
 #clp-toggle-item {
     display: flex;
-    align-items: stretch;
-    margin-left: 8px;
-    border-left: 1px solid rgba(255, 255, 255, .18);
+    align-items: center;
+    margin: 0 6px 0 3px;
 }
 
 #clp-toggle-btn {
-    /* Match Contao's #tmenu a exactly */
+    /* Match Contao 5.7+ #tmenu a: border-radius pill, padding 8px 12px, margin 5px 0 */
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    margin: 0;
-    padding: 13px 12px;
+    margin: 5px 0;
+    padding: 8px 12px;
     border: none;
+    border-radius: 20px;
     background: none;
-    color: var(--header-text, #fff);
+    color: var(--text, #222);
     font-size: .875rem;
     font-family: inherit;
     font-weight: 300;
     line-height: 1;
     cursor: pointer;
     white-space: nowrap;
-    transition: background-color .3s ease;
+    transition: background-color .15s;
 }
 
 #clp-toggle-btn:hover,
 #clp-toggle-btn.active {
-    background-color: var(--header-bg-hover, rgba(0, 0, 0, .15));
+    background-color: var(--nav-bg-hover, #eaeaec);
 }
 
 /* Hide label text on narrower screens (matches Contao's own responsive behaviour) */
