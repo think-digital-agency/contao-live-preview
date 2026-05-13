@@ -273,8 +273,10 @@
 
 /* -------------------------------------------------------------------------
    Toggle button in #tmenu header
-   Must match: #tmenu a { padding: 13px 12px; font-size: .875rem; color: var(--header-text) }
-   and: #tmenu .color-scheme button, #tmenu .profile button { font-size: .875rem }
+   Contao 5.7.4+ changed the header from orange to white and dropped --header-text.
+   We use CSS variable chaining as implicit version detection — no JS, no media queries:
+     --header-text present  (≤5.7.3, orange header) → white text, dark hover overlay
+     --header-text absent   (≥5.7.4, white header)  → var(--text) dark text, nav hover
    ------------------------------------------------------------------------- */
 #clp-toggle-item {
     display: flex;
@@ -283,7 +285,6 @@
 }
 
 #clp-toggle-btn {
-    /* Match Contao 5.7+ #tmenu a: border-radius pill, padding 8px 12px, margin 5px 0 */
     display: inline-flex;
     align-items: center;
     gap: 6px;
@@ -292,7 +293,9 @@
     border: none;
     border-radius: 20px;
     background: none;
-    color: var(--text, #222);
+    /* --header-text exists on old orange header → white text.
+       Missing on 5.7.4+ white header → fall through to --text (dark). */
+    color: var(--header-text, var(--text, #222));
     font-size: .875rem;
     font-family: inherit;
     font-weight: 300;
@@ -304,7 +307,9 @@
 
 #clp-toggle-btn:hover,
 #clp-toggle-btn.active {
-    background-color: var(--nav-bg-hover, #eaeaec);
+    /* --header-bg-hover exists on old orange header → dark overlay on orange.
+       Missing on 5.7.4+ → fall through to --nav-bg-hover (light grey). */
+    background-color: var(--header-bg-hover, var(--nav-bg-hover, #eaeaec));
 }
 
 /* Hide label text on narrower screens (matches Contao's own responsive behaviour) */
