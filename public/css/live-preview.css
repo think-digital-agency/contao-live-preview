@@ -66,8 +66,15 @@
     box-shadow: -4px 0 16px rgba(0, 0, 0, .15);
 }
 
-/* No resizing in overlay mode (≤1200px) — width is controlled automatically */
+/* Overlay mode (≤1200px): sidebar sits below the Contao header so the
+   toggle button remains reachable. 44px header + 1px border-bottom = 45px.
+   clip-path clips the shadow flush at the top edge so it doesn't bleed
+   over the header; negative values on the other sides let the shadow out. */
 @media (max-width: 1200px) {
+    #clp-right {
+        top: 45px;
+        clip-path: inset(0 0 -30px -30px);
+    }
     #clp-resizer {
         pointer-events: none;
         cursor: default;
