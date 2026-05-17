@@ -129,7 +129,7 @@
 #clp-toolbar {
     display: flex;
     align-items: center;
-    height: var(--clp-header-h, 44px);
+    height: calc(var(--clp-header-h, 44px) - 1px);
     flex-shrink: 0;
     background: var(--panel-bg, #f3f3f5);
     border-bottom: 1px solid var(--content-border, #d0d0d2);
