@@ -67,12 +67,13 @@
 }
 
 /* Overlay mode (≤1200px): sidebar sits below the Contao header so the
-   toggle button remains reachable. 44px header + 1px border-bottom = 45px.
-   clip-path clips the shadow flush at the top edge so it doesn't bleed
+   toggle button remains reachable. --clp-header-h is set by JS from the
+   actual #header height; +1px covers the header's border-bottom.
+   clip-path clips the box-shadow flush at the top edge so it doesn't bleed
    over the header; negative values on the other sides let the shadow out. */
 @media (max-width: 1200px) {
     #clp-right {
-        top: 45px;
+        top: calc(var(--clp-header-h, 44px) + 1px);
         clip-path: inset(0 0 -30px -30px);
     }
     #clp-resizer {
@@ -128,7 +129,7 @@
 #clp-toolbar {
     display: flex;
     align-items: center;
-    height: 44px;
+    height: var(--clp-header-h, 44px);
     flex-shrink: 0;
     background: var(--panel-bg, #f3f3f5);
     border-bottom: 1px solid var(--content-border, #d0d0d2);

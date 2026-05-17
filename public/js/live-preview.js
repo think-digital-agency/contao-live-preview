@@ -116,6 +116,13 @@
     document.addEventListener('DOMContentLoaded', onPageReady);
     document.addEventListener('turbo:render', onPageReady);
 
+    // Reads the actual #header height and writes it as --clp-header-h on <html>.
+    // CSS uses this for toolbar height and overlay top offset instead of hardcoded px.
+    function syncHeaderHeight() {
+        const h = document.getElementById('header')?.getBoundingClientRect().height || 44;
+        document.documentElement.style.setProperty('--clp-header-h', Math.round(h) + 'px');
+    }
+
     function onPageReady() {
         // Acquire refs on first call; move sidebar to <html> so Turbo never touches it.
         if (!sidebar) {
@@ -132,6 +139,8 @@
         if (!zoomSelect) zoomSelect = document.getElementById('clp-zoom');
 
         if (!sidebar || !frame) return;
+
+        syncHeaderHeight();
 
         // Each navigation is a fresh highlight cycle — allow one highlight per page.
         refreshSent = false;
@@ -246,6 +255,7 @@
             // Uses the last persisted normal-mode width as the target; overlay
             // mode ignores that and applies its own fixed width.
             window.addEventListener('resize', () => {
+                syncHeaderHeight();
                 if (!isOpen) return;
                 const savedW = parseInt(
                     localStorage.getItem(LS_WIDTH_KEY) || String(DEFAULT_WIDTH), 10,
