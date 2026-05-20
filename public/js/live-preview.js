@@ -97,6 +97,8 @@
     // Prevents a second DOM swap + highlight from a late observer or late resolveAndShow.
     // Reset to false on every onPageReady so the next navigation-only highlight works.
     let refreshSent          = false;
+    // Timer ID for the clp:refreshed safety fallback in refreshPreview().
+    let refreshedTimeoutId   = null;
 
     // True from the moment a backend form is submitted until the save cycle
     // completes (clp:refresh sent or skipped). Prevents resolveAndShow from
@@ -115,6 +117,9 @@
 
     document.addEventListener('DOMContentLoaded', onPageReady);
     document.addEventListener('turbo:render', onPageReady);
+    // turbo:load covers Turbo v7 (Contao ≤ 5.5) which does not fire turbo:render.
+    // In Turbo v8+ both events fire — onPageReady is idempotent so the double call is harmless.
+    document.addEventListener('turbo:load', onPageReady);
 
     // Reads the actual #header height and writes it as --clp-header-h on <html>.
     // CSS uses this for toolbar height and overlay top offset instead of hardcoded px.
@@ -215,6 +220,8 @@
                 if (e.data?.type === 'clp:refreshed') {
                     localStorage.removeItem(LS_SAVE_KEY);
                     pendingSave = false; // iframe confirmed DOM-swap complete
+                    clearTimeout(refreshedTimeoutId);
+                    refreshedTimeoutId = null;
                     return;
                 }
                 if (e.data?.type === 'clp:edit') {
@@ -557,6 +564,26 @@
         //   2. DOMParser extracts the article node from the response
         //   3. Replaces the live DOM node
         //   4. Applies highlight, then posts clp:refreshed back
+        //
+        // Safety: if clp:refreshed never arrives (inline script absent, Contao 5.3 without
+        // the frontend script, iframe not yet loaded), fall back to a full iframe reload after 5s.
+        clearTimeout(refreshedTimeoutId);
+        refreshedTimeoutId = setTimeout(() => {
+            refreshedTimeoutId = null;
+            pendingSave = false;
+            const src = getCleanSrc();
+            if (src) {
+                try {
+                    const u = new URL(addClpParam(src));
+                    u.searchParams.set('_t', String(Date.now()));
+                    frame.src = u.toString();
+                } catch {
+                    frame.src = addClpParam(src);
+                }
+                frame.addEventListener('load', sendHighlight, { once: true });
+            }
+        }, 5000);
+
         try {
             frame.contentWindow.postMessage({
                 type:      'clp:refresh',
