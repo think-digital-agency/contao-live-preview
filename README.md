@@ -1,7 +1,16 @@
 # Contao Live Preview
 
 [![Packagist](https://img.shields.io/packagist/v/think-digital-agency/contao-live-preview.svg)](https://packagist.org/packages/think-digital-agency/contao-live-preview)
+[![Downloads](https://img.shields.io/packagist/dt/think-digital-agency/contao-live-preview.svg)](https://packagist.org/packages/think-digital-agency/contao-live-preview)
 [![License](https://img.shields.io/packagist/l/think-digital-agency/contao-live-preview.svg)](LICENSE)
+
+**[English]** A native frontend preview panel for the Contao 5 backend. Open any page, article or content element — the sidebar immediately shows the matching frontend page. Save — only the edited article updates in the iframe, no page reload, no scroll loss. Hover over any element in the preview — a badge shows its type, click opens the edit form directly.
+
+```bash
+composer require think-digital-agency/contao-live-preview
+```
+
+---
 
 **Schluss mit Backend und Browser hin- und herwechseln.** Contao Live Preview bringt eine direkte Vorschau des Frontends als ausklappbare Seitenleiste ins Contao 5 Backend — immer die richtige Seite, immer aktuell, mit einem nativen Gefühl das man so aus Contao nicht kennt.
 
