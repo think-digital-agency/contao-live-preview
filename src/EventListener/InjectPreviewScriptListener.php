@@ -45,12 +45,10 @@ class InjectPreviewScriptListener
 
         $response->setContent(str_replace('</body>', $this->buildInjection() . '</body>', $content));
 
-        // Allow the browser to cache _clp=1 responses for 60 s.
-        // Turbo body-swaps reload the iframe involuntarily (Chrome reloads iframes
-        // when their parent moves in the DOM); with a warm cache the reload resolves
-        // from disk in < 5 ms, making the flash imperceptible.
-        // clp:refresh still fetches fresh HTML for the article DOM-swap.
-        $response->headers->set('Cache-Control', 'private, max-age=60');
+        // no-cache: browser always revalidates before using a cached response.
+        // A 304 Not Modified costs only one RTT (no body) so navigation stays snappy,
+        // while stale content after saves or back-navigations within 60 s is impossible.
+        $response->headers->set('Cache-Control', 'private, no-cache');
         $response->headers->remove('Pragma');
     }
 
