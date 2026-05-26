@@ -679,7 +679,15 @@
         articleSelectors          = state.articleSelectors    || [];
         frameNeedsReload   = false; // will be set true on load
 
-        frame.src = addClpParam(state.iframeUrl);
+        // Cache-bust so the browser doesn't serve a max-age=60 stale response.
+        // All other post-save frame.src assignments already carry _t; this was the only gap.
+        try {
+            const u = new URL(addClpParam(state.iframeUrl));
+            u.searchParams.set('_t', String(Date.now()));
+            frame.src = u.toString();
+        } catch {
+            frame.src = addClpParam(state.iframeUrl);
+        }
         frame.addEventListener('load', () => {
             frameNeedsReload = true;
             if (state.scrollX || state.scrollY) {
