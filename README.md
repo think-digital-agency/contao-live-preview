@@ -4,7 +4,7 @@
 [![Downloads](https://img.shields.io/packagist/dt/think-digital-agency/contao-live-preview.svg)](https://packagist.org/packages/think-digital-agency/contao-live-preview)
 [![License](https://img.shields.io/packagist/l/think-digital-agency/contao-live-preview.svg)](LICENSE)
 
-**[English]** A native frontend preview panel for the Contao 5 backend. Open any page, article or content element — the sidebar immediately shows the matching frontend page. Save — only the edited article updates in the iframe, no page reload, no scroll loss. Hover over any element in the preview — a badge shows its type, click opens the edit form directly.
+**[English]** A native live preview panel for the Contao 5 backend. Open any page, article or content element — the sidebar immediately shows the matching frontend view. Save — only the edited section refreshes instantly, no page reload, no scroll loss. Hover over any element in the preview — a label shows its type, click opens the edit form directly.
 
 ```bash
 composer require think-digital-agency/contao-live-preview
@@ -12,7 +12,7 @@ composer require think-digital-agency/contao-live-preview
 
 ---
 
-**Schluss mit Backend und Browser hin- und herwechseln.** Contao Live Preview bringt eine direkte Vorschau des Frontends als ausklappbare Seitenleiste ins Contao 5 Backend — immer die richtige Seite, immer aktuell, mit einem nativen Gefühl das man so aus Contao nicht kennt.
+**Schluss mit dem ewigen Tab-Wechsel.** Contao Live Preview bringt eine direkte Frontend-Vorschau als ausklappbare Sidebar ins Contao 5 Backend — immer passend zu dem, was du gerade bearbeitest. Mit einem Workflow-Gefühl, das man so aus Contao nicht kennt.
 
 ![Contao Live Preview Screenshot](https://raw.githubusercontent.com/think-digital-agency/contao-live-preview/main/docs/preview.png)
 
@@ -20,33 +20,33 @@ composer require think-digital-agency/contao-live-preview
 
 ## Was macht die Erweiterung?
 
-Du öffnest einen Artikel oder ein Content Element im Backend — und rechts siehst du sofort, wie es im Frontend aussieht. Du speicherst — der Artikel wird **direkt im laufenden iFrame aktualisiert**, ohne Reload, ohne Scrollen. Du hoverst über ein Element in der Vorschau — ein Badge zeigt dir, was es ist, und ein Klick bringt dich direkt zur Bearbeitungsmaske.
+Du öffnest einen Artikel oder ein Inhaltselement im Backend — und siehst sofort, wie es im Frontend aussieht. Du speicherst — nur der bearbeitete Bereich aktualisiert sich direkt in der Vorschau, ohne Reload, ohne Scrollen. Du fährst mit der Maus über ein Element in der Vorschau — ein Hover-Label zeigt dir Typ und Name, ein Klick öffnet die Bearbeitungsmaske direkt.
 
-Kein Plugin. Kein Builder. Kein Kompromiss. Einfach Contao, wie es sein sollte.
+Kein Builder. Kein Kompromiss. Einfach Contao, wie es sein sollte.
 
 ---
 
 ## Features
 
-- **Live Vorschau im Backend** — öffnest du eine Seite, einen Artikel oder ein Content Element, zeigt die Seitenleiste sofort die passende Frontend-Seite. Ohne Konfiguration, ohne Klick.
-- **Kein Reload nach dem Speichern** — nur der bearbeitete Artikel wird direkt im iFrame ausgetauscht. Scroll-Position bleibt, kein Flackern, natives Gefühl.
-- **Automatische Aktualisierung bei Strukturänderungen** — löscht, dupliziert, verschiebt oder versteckt du ein Element, lädt der iFrame nach der Backend-Weiterleitung automatisch neu. Kein zweites Neuladen nötig.
-- **Schnelle Aktionen im Badge** — das aktive Content-Element-Badge zeigt direkt Schaltflächen zum Duplizieren (⧉) und zum Einfügen eines neuen Elements danach (+). Ein Klick, keine Suche im Backend.
-- **Hover-Inspektion** — fahre mit der Maus über Artikel oder Content Elemente in der Vorschau. Ein farbiges Badge zeigt Typ und Name — Klick auf den Stift öffnet die Bearbeitungsmaske direkt.
-- **Doppeltes Highlighting** — das aktive Content Element wird blau umrahmt, der zugehörige Artikel gestrichelt. So siehst du immer Kontext und Detail gleichzeitig.
-- **Immer eine Seite im iFrame** — auch wenn kein konkreter Seitenkontext aktiv ist, zeigt die Vorschau die Startseite statt leer zu bleiben.
-- **Funktioniert mit jedem Theme** — die Extension setzt alle nötigen Marker automatisch. Keine Theme-Anpassungen nötig.
-- **Panel frei verschiebbar** — per Drag in der Breite anpassbar, mit Zoom-Steuerung für kleine Bildschirme.
-- **Bleibt beim Navigieren erhalten** — die Seitenleiste überlebt alle Backend-Navigationen, kein iFrame-Flash, kein Zustandsverlust.
+- **Live-Vorschau im Backend** — öffnest du eine Seite, einen Artikel oder ein Inhaltselement, zeigt die Sidebar sofort die passende Frontend-Ansicht. Ohne Konfiguration, ohne zusätzlichen Klick.
+- **Hot-Refresh nach dem Speichern** — nur der bearbeitete Abschnitt wird direkt in der Vorschau aktualisiert. Scroll-Position bleibt, kein Flackern.
+- **Automatische Aktualisierung bei Strukturänderungen** — löscht, dupliziert, verschiebt oder versteckst du ein Element, lädt die Vorschau nach der Backend-Weiterleitung automatisch neu.
+- **Direkte Aktionen aus der Vorschau** — das aktive Element zeigt inline Schaltflächen zum Duplizieren (⧉) und zum Einfügen eines neuen Elements danach (+). Ein Klick, keine Suche im Backend.
+- **Hover-Inspektion** — fährt man mit der Maus über Artikel oder Inhaltselemente, erscheint ein kontextuelles Label mit Typ und Name. Klick auf den Stift öffnet die Bearbeitungsmaske direkt.
+- **Kontextuelles Highlighting** — das aktive Inhaltselement wird blau hervorgehoben, der zugehörige Artikel gestrichelt umrahmt. Kontext und Detail immer gleichzeitig sichtbar.
+- **Funktioniert mit jedem Theme** — die Extension setzt alle nötigen Marker automatisch. Keine Template-Anpassungen erforderlich.
+- **Frei anpassbares Panel** — per Drag in der Breite anpassbar, mit Zoom-Steuerung für kleinere Bildschirme.
+- **Persistente Sidebar** — die Vorschau überlebt alle Backend-Navigationen ohne Zustandsverlust.
 - **Kostenlos und Open Source** — LGPL-3.0, keine Lizenzkosten, keine versteckten Features.
+- **Nativ integriert im [Contao Design+ Theme](https://themes.contao.org/de/index/contao-design-plus)** — wer auf Design+ setzt, bekommt Hot-Refresh, Hover-Inspektion und Highlighting vollständig vorkonfiguriert, ohne eine einzige Zeile Konfiguration.
 
 ---
 
 ## Perfekt kombiniert: Contao Design+ Theme
 
-Diese Extension wurde im Alltag mit dem **[Contao Design+ Theme](https://themes.contao.org/de/index/contao-design-plus)** entwickelt und ist dort vollständig integriert. Contao Design+ liefert alle nötigen Marker direkt in den Templates mit — die Live Vorschau, das Hover-Highlighting und der iFrame-Swap funktionieren damit auf Anhieb, ohne jegliche Konfiguration.
+Diese Extension wurde im Alltag mit dem **[Contao Design+ Theme](https://themes.contao.org/de/index/contao-design-plus)** entwickelt und ist dort vollständig integriert. Design+ liefert alle nötigen Marker direkt in den Templates mit — Hot-Refresh, Hover-Inspektion und Highlighting funktionieren damit auf Anhieb, ohne jegliche Konfiguration.
 
-Wer professionelle Contao-Projekte baut, bekommt mit Contao Design+ + Live Preview einen Workflow mit einem nativen Gefühl — bei vollem Zugriff auf das gewohnte Contao Backend.
+Wer professionelle Contao-Projekte baut, bekommt mit Design+ und Live Preview einen Workflow mit einem nativen Gefühl — bei vollem Zugriff auf das gewohnte Contao Backend.
 
 ---
 
@@ -71,11 +71,11 @@ Die Extension registriert sich automatisch über den Contao Manager Plugin. Kein
 
 ## Verwendung
 
-Öffne eine beliebige Seite, einen Artikel oder ein Content Element im Contao Backend. Oben rechts im Backend-Header erscheint der **„Live Preview"**-Button. Klicken — fertig.
+Öffne eine beliebige Seite, einen Artikel oder ein Inhaltselement im Contao Backend. Oben rechts im Backend-Header erscheint der **„Live Preview"**-Button. Klicken — fertig.
 
 Die Vorschau aktualisiert sich automatisch wenn du:
-- zu einer anderen Seite, einem anderen Artikel oder Content Element navigierst
-- einen Datensatz speicherst (direkter iFrame-Swap, kein Reload)
+- zu einer anderen Seite, einem anderen Artikel oder Inhaltselement navigierst
+- einen Datensatz speicherst (direkter Hot-Refresh)
 - innerhalb der Vorschau auf einen Link klickst
 
 ---
@@ -120,10 +120,10 @@ ThinkDigital\ContaoLivePreview\Service\PreviewUrlResolverInterface:
 
 ## Bekannte Einschränkungen
 
-- **Content Elemente ohne CSS-ID in mehrspaltigen Layouts**: Elemente können falsch zugeordnet werden, wenn Spalten im HTML in anderer Reihenfolge erscheinen als in der DB. Workaround: CSS-ID am betroffenen Element setzen.
-- **Verschachtelte Content Elemente** (z. B. Akkordeon-Inhalte): die Positionszählung kann versetzt sein. Mit CSS-ID ist das Matching immer zuverlässig.
-- **`noMarkup`-Artikel**: iFrame-Swap und Highlighting brauchen den Standard-`id="article-{N}"`-Wrapper — `noMarkup` unterdrückt diesen.
-- **Seiten-Datensätze**: das Speichern einer Seite löst keinen iFrame-Swap aus (kein Artikel-Kontext). Ein manueller Reload des Panels ist nötig.
+- **Inhaltselemente ohne CSS-ID in mehrspaltigen Layouts**: Elemente können falsch zugeordnet werden, wenn Spalten im HTML in anderer Reihenfolge erscheinen als in der DB. Workaround: CSS-ID am betroffenen Element setzen.
+- **Verschachtelte Inhaltselemente** (z. B. Akkordeon-Inhalte): die Positionszählung kann versetzt sein. Mit CSS-ID ist das Matching zuverlässig.
+- **`noMarkup`-Artikel**: Hot-Refresh und Highlighting benötigen den Standard-`id="article-{N}"`-Wrapper.
+- **Seiten-Datensätze**: das Speichern einer Seite löst keinen Hot-Refresh aus. Ein manuelles Neuladen der Sidebar ist nötig.
 
 ---
 
