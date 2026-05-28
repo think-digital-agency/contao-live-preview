@@ -3,6 +3,29 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.3.14] - 2026-05-27
+
+### Documentation
+- Rewrite README: modern language throughout, no iFrame jargon, "Hot-Refresh" terminology, tightened feature list
+
+## [2.3.13] - 2026-05-26
+
+### Fixed
+- Preview responses now use `Cache-Control: private, no-cache` instead of `max-age=60` — browser always revalidates before using cached content, eliminating stale preview on back-navigation without a save
+
+## [2.3.12] - 2026-05-26
+
+### Fixed
+- Iframe showed cached (stale) content after a full-page backend reload (Contao 5.3 post-save): `tryRehydrate()` full-reload path now adds a `_t` cache-buster when setting `frame.src`
+
+## [2.3.11] - 2026-05-22
+
+### Documentation
+- Add CHANGELOG.md (full history from v1.0.0)
+- README: Downloads badge + short English intro block
+- `composer.json`: updated description to English, benefit-focused
+- Move ARCHITECTURE.md and DECISIONS.md to `docs/`, remove INSTALL.md
+
 ## [2.3.10] - 2026-05-22
 
 ### Fixed
