@@ -1,8 +1,8 @@
 {
     "name": "think-digital-agency/contao-live-preview",
     "type": "contao-bundle",
-    "description": "Native frontend preview panel for the Contao 5 backend — live-edit pages, articles and content elements without switching tabs.",
-    "keywords": ["contao", "contao-bundle", "contao-extension", "preview", "frontend editor", "frontend edit helper", "backend"],
+    "description": "Live preview sidebar for the Contao 5 backend — articles and content elements hot-refreshed in real time, with hover inspection and one-click edit navigation.",
+    "keywords": ["contao", "contao-bundle", "contao-extension", "preview", "live preview", "frontend editor", "frontend edit helper", "frontend helper", "sidebar", "backend", "hover"],
     "homepage": "https://github.com/think-digital-agency/contao-live-preview",
     "license": "LGPL-3.0-or-later",
     "authors": [
