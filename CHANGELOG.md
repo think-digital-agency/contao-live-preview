@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.3.16] - 2026-06-14
+
+### Documentation
+- Update app icon (new PSD + PNG)
+- Improve package-metadata descriptions and keywords for Contao Extension Store (de + en)
+- Track `docs/app-icon.psd` in version control
+
 ## [2.3.14] - 2026-05-27
 
 ### Documentation
