@@ -3,6 +3,11 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.3.18] - 2026-06-15
+
+### Fixed
+- Re-release of v2.3.17 as a new tag — Packagist rejected the force-pushed v2.3.17 tag (stable versions are immutable). No functional changes vs v2.3.17.
+
 ## [2.3.17] - 2026-06-15
 
 ### Fixed
