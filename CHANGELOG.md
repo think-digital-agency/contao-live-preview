@@ -3,7 +3,7 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [2.3.20] - 2026-06-15
 
 ### Fixed
 - Backend edit-all view (`.tl_show_all`): content column now expands to full width when the sidebar is open — the filter panel slides out to the right under the preview sidebar instead of squishing the layout. Animated with the same easing as the sidebar itself (`clp-animate` guard).
