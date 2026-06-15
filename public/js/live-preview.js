@@ -23,9 +23,10 @@
  *      (localStorage clp_pending_save) restores the state after reload.
  *
  * URL disambiguation (verified against real Contao 5.7 backend URLs):
- *   ?do=article&table=tl_content&act=edit&id=X  → id = content element
- *   ?do=article&table=tl_content&id=X           → id = article (list view)
- *   ?do=article&table=tl_article&act=edit&id=X  → id = article
+ *   ?do=article&table=tl_content&act=edit&id=X              → id = content element
+ *   ?do=article&table=tl_content&id=X                       → id = article (list view)
+ *   ?do=article&table=tl_content&id=X&ptable=tl_content     → id = CE group (group list view)
+ *   ?do=article&table=tl_article&act=edit&id=X              → id = article
  *   ?do=article&id=X                            → id = article
  *   ?do=page&id=X                               → id = page
  *   ?do=themes&table=tl_module&act=edit&id=X    → id = frontend module
@@ -361,7 +362,12 @@
         }
 
         if (doV === 'article' && tbl === 'tl_content' && !act) {
-            return { table: 'tl_article', id };
+            // ptable=tl_content → element group list view: id is the group CE, not an article.
+            // ptable absent/tl_article → regular article element list: id is the article.
+            const ptbl = p.get('ptable') || '';
+            return ptbl === 'tl_content'
+                ? { table: 'tl_content', id }
+                : { table: 'tl_article', id };
         }
 
         if (doV === 'article' && id > 0) {
@@ -374,6 +380,10 @@
 
         if (tbl === 'tl_module' && act === 'edit' && id > 0) {
             return { table: 'tl_module', id };
+        }
+
+        if (tbl === 'tl_layout' && act === 'edit' && id > 0) {
+            return { table: 'tl_layout', id };
         }
 
         return null;
@@ -453,9 +463,9 @@
     }
 
     async function resolveAndShow(ctx) {
-        // Module context: no resolver call, no URL change — iframe already shows a
+        // Module / layout context: no resolver call, no URL change — iframe already shows a
         // relevant page. On save, refreshPreview() will do a full iframe reload.
-        if (ctx?.table === 'tl_module') {
+        if (ctx?.table === 'tl_module' || ctx?.table === 'tl_layout') {
             if (!getCleanSrc()) { return resolveAndShow(null); }
             frameNeedsReload = true;
             return;

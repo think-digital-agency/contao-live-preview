@@ -31,7 +31,7 @@ class PreviewUrlResolver implements PreviewUrlResolverInterface
     private function resolveFromContent(int $id): ?array
     {
         $row = $this->connection->fetchAssociative(
-            'SELECT pid, type FROM tl_content WHERE id = ?',
+            'SELECT pid, ptable, type FROM tl_content WHERE id = ?',
             [$id],
         );
 
@@ -39,7 +39,31 @@ class PreviewUrlResolver implements PreviewUrlResolverInterface
             return null;
         }
 
-        $result = $this->resolveFromArticle((int) $row['pid']);
+        // Walk up through nested element groups (ptable='tl_content') until we
+        // reach the owning article. Safety cap of 10 prevents infinite loops.
+        $effectivePid = (int) $row['pid'];
+        $ptable       = (string) ($row['ptable'] ?: 'tl_article');
+        $depth        = 0;
+
+        while ('tl_content' === $ptable && $depth++ < 10) {
+            $parent = $this->connection->fetchAssociative(
+                'SELECT pid, ptable FROM tl_content WHERE id = ?',
+                [$effectivePid],
+            );
+
+            if (!$parent) {
+                return null;
+            }
+
+            $effectivePid = (int) $parent['pid'];
+            $ptable       = (string) ($parent['ptable'] ?: 'tl_article');
+        }
+
+        if ('tl_article' !== $ptable) {
+            return null;
+        }
+
+        $result = $this->resolveFromArticle($effectivePid);
 
         if (null !== $result) {
             $result['contentElementId']   = $id;
