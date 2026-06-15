@@ -23,9 +23,10 @@
  *      (localStorage clp_pending_save) restores the state after reload.
  *
  * URL disambiguation (verified against real Contao 5.7 backend URLs):
- *   ?do=article&table=tl_content&act=edit&id=X  → id = content element
- *   ?do=article&table=tl_content&id=X           → id = article (list view)
- *   ?do=article&table=tl_article&act=edit&id=X  → id = article
+ *   ?do=article&table=tl_content&act=edit&id=X              → id = content element
+ *   ?do=article&table=tl_content&id=X                       → id = article (list view)
+ *   ?do=article&table=tl_content&id=X&ptable=tl_content     → id = CE group (group list view)
+ *   ?do=article&table=tl_article&act=edit&id=X              → id = article
  *   ?do=article&id=X                            → id = article
  *   ?do=page&id=X                               → id = page
  *   ?do=themes&table=tl_module&act=edit&id=X    → id = frontend module
@@ -361,9 +362,12 @@
         }
 
         if (doV === 'article' && tbl === 'tl_content' && !act) {
-            // id may be an article ID (normal list view) or a CE group ID (group list view)
-            // — let the resolver disambiguate via tl_article_container.
-            return { table: 'tl_article_container', id };
+            // ptable=tl_content → element group list view: id is the group CE, not an article.
+            // ptable absent/tl_article → regular article element list: id is the article.
+            const ptbl = p.get('ptable') || '';
+            return ptbl === 'tl_content'
+                ? { table: 'tl_content', id }
+                : { table: 'tl_article', id };
         }
 
         if (doV === 'article' && id > 0) {
