@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Fixed
+- Backend edit-all view (`.tl_show_all`): content column now expands to full width when the sidebar is open — the filter panel slides out to the right under the preview sidebar instead of squishing the layout. Animated with the same easing as the sidebar itself (`clp-animate` guard).
+- `overflow-x: clip` on `body.clp-open` (desktop) prevents a horizontal scrollbar from appearing without breaking `position: sticky` elements (unlike `overflow: hidden`, `clip` does not create a new scroll container).
+- Long submit-button labels (`tl_submit`) are now truncated with ellipsis when the sidebar is open to prevent overflow in narrow backend forms.
+
 ## [2.3.19] - 2026-06-15
 
 ### Fixed

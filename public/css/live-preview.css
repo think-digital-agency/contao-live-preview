@@ -34,6 +34,31 @@
     body.clp-open #left {
         flex-shrink: 0;
     }
+
+    /* Clip horizontal overflow so the displaced .tl_content_filter doesn't
+       create a scrollbar. overflow-x:clip (unlike hidden) does not create a
+       new scroll container, so position:sticky elements keep working. */
+    body.clp-open {
+        overflow-x: clip;
+    }
+
+    /* Edit-all view (.tl_show_all): expand content column to full width so
+       the filter panel slides out to the right under the preview sidebar.
+       Transition only fires on button click (clp-animate), not on page restore. */
+    body.clp-open .tl_show_all {
+        grid-template-columns: 100% var(--filter-width, 240px);
+    }
+    body.clp-animate .tl_show_all {
+        transition: grid-template-columns 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    /* Truncate long submit-button labels in narrow backend forms. */
+    body.clp-open .tl_submit {
+        max-width: 250px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
 }
 
 /* -------------------------------------------------------------------------
