@@ -361,7 +361,9 @@
         }
 
         if (doV === 'article' && tbl === 'tl_content' && !act) {
-            return { table: 'tl_article', id };
+            // id may be an article ID (normal list view) or a CE group ID (group list view)
+            // — let the resolver disambiguate via tl_article_container.
+            return { table: 'tl_article_container', id };
         }
 
         if (doV === 'article' && id > 0) {

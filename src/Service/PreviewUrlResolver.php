@@ -21,10 +21,11 @@ class PreviewUrlResolver implements PreviewUrlResolverInterface
     public function resolve(string $table, int $id): ?array
     {
         return match ($table) {
-            'tl_content' => $this->resolveFromContent($id),
-            'tl_article' => $this->resolveFromArticle($id),
-            'tl_page'    => $this->resolveFromPage($id),
-            default      => null,
+            'tl_content'           => $this->resolveFromContent($id),
+            'tl_article'           => $this->resolveFromArticle($id),
+            'tl_article_container' => $this->resolveFromArticleContainer($id),
+            'tl_page'              => $this->resolveFromPage($id),
+            default                => null,
         };
     }
 
@@ -96,6 +97,31 @@ class PreviewUrlResolver implements PreviewUrlResolverInterface
             $result['articleCssId'] = \is_array($cssIdData) && '' !== ($cssIdData[0] ?? '')
                 ? (string) $cssIdData[0]
                 : '';
+        }
+
+        return $result;
+    }
+
+    /**
+     * Resolves a list-view context where the id is either an article ID (normal
+     * element list) or a CE group ID (element group list). Tries article first;
+     * falls back to CE walk-up without exposing a contentElementId so the
+     * group list view highlights the article, not a specific element.
+     */
+    private function resolveFromArticleContainer(int $id): ?array
+    {
+        $result = $this->resolveFromArticle($id);
+
+        if (null !== $result) {
+            return $result;
+        }
+
+        // id is a CE group — walk up to the owning article and return article-level data.
+        $result = $this->resolveFromContent($id);
+
+        if (null !== $result) {
+            $result['contentElementId']   = null;
+            $result['contentElementType'] = null;
         }
 
         return $result;
