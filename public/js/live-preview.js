@@ -376,6 +376,10 @@
             return { table: 'tl_module', id };
         }
 
+        if (tbl === 'tl_layout' && act === 'edit' && id > 0) {
+            return { table: 'tl_layout', id };
+        }
+
         return null;
     }
 
@@ -453,9 +457,9 @@
     }
 
     async function resolveAndShow(ctx) {
-        // Module context: no resolver call, no URL change — iframe already shows a
+        // Module / layout context: no resolver call, no URL change — iframe already shows a
         // relevant page. On save, refreshPreview() will do a full iframe reload.
-        if (ctx?.table === 'tl_module') {
+        if (ctx?.table === 'tl_module' || ctx?.table === 'tl_layout') {
             if (!getCleanSrc()) { return resolveAndShow(null); }
             frameNeedsReload = true;
             return;
