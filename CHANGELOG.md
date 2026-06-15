@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.3.17] - 2026-06-15
+
+### Fixed
+- **Element group context (Issue #6)**: `resolveFromContent()` now reads `ptable` and walks up through nested element groups (`ptable = 'tl_content'`) until it reaches the owning article — previewing CEs inside element groups now works correctly
+- **Page layout context (Issue #6)**: backend layout edit form (`tl_layout`) is now treated like module editing — sidebar stays on the current page and refreshes after save instead of falling back to root page
+- **Element group list view**: `?do=article&table=tl_content&id=X&ptable=tl_content` URL (element group child list) is now correctly identified as a group context, preventing blank preview on full backend page reload
+
 ## [2.3.16] - 2026-06-14
 
 ### Documentation
