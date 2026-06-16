@@ -46,7 +46,7 @@
        the filter panel slides out to the right under the preview sidebar.
        Transition only fires on button click (clp-animate), not on page restore. */
     body.clp-open .tl_show_all {
-        grid-template-columns: 100% var(--filter-width, 240px);
+        grid-template-columns: 100% var(--filter-width, 240px) !important;
     }
     body.clp-animate .tl_show_all {
         transition: grid-template-columns 0.28s cubic-bezier(0.4, 0, 0.2, 1);

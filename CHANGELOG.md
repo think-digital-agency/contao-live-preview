@@ -3,6 +3,11 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.3.21] - 2026-06-16
+
+### Fixed
+- `grid-template-columns` override for `.tl_show_all` now uses `!important` — Contao's `#main .tl_show_all:has(>.content-filter)` ID selector was winning the specificity battle and the filter panel was not being displaced
+
 ## [2.3.20] - 2026-06-15
 
 ### Fixed
