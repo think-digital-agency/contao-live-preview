@@ -23,6 +23,7 @@ class PreviewResolverController extends AbstractController
     public function __construct(
         private readonly PreviewUrlResolverInterface $resolver,
         private readonly ContaoFramework $framework,
+        private readonly \Symfony\Contracts\Translation\TranslatorInterface $translator,
     ) {
     }
 
@@ -79,7 +80,7 @@ class PreviewResolverController extends AbstractController
         $contentElementId    = $pageData['contentElementId']   ?? null;
         $contentElementType  = (string) ($pageData['contentElementType'] ?? '');
         $contentElementLabel = '' !== $contentElementType
-            ? $this->resolveLabel($contentElementType, $this->framework)
+            ? $this->resolveLabel($contentElementType, $this->translator)
             : '';
 
         // Article-level selectors — used for DOM swap (clp:refresh) and as secondary

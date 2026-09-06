@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace ThinkDigital\ContaoLivePreview\EventListener;
 
 use Contao\CoreBundle\Framework\ContaoFramework;
+use Symfony\Contracts\Translation\TranslatorInterface;
 use Doctrine\DBAL\Connection;
 use Symfony\Component\EventDispatcher\Attribute\AsEventListener;
 use Symfony\Component\HttpFoundation\RequestStack;
@@ -43,6 +44,7 @@ class InjectTwigContentElementMarkersListener
         private readonly RequestStack $requestStack,
         private readonly ContaoFramework $framework,
         private readonly Connection $connection,
+        private readonly TranslatorInterface $translator,
     ) {
     }
 
@@ -131,7 +133,7 @@ class InjectTwigContentElementMarkersListener
         // Matches any opening tag that has a class attribute containing ce_{type}.
         // The full match includes from < to > (inclusive) so we can check for
         // data-contao-table= within the same tag and get the byte offset.
-        $pattern = '/(<[a-z][a-z0-9]*\b[^>]*\bclass="[^"]*\bce_[a-z_][a-z0-9_]*\b[^"]*"[^>]*>)/i';
+        $pattern = '/(<[a-z][a-z0-9]*\b[^>]*\bclass="[^"]*\b(?:ce_|content-)[a-z][a-z0-9_-]*\b[^"]*"[^>]*>)/i';
         if (!preg_match_all($pattern, $content, $tagMatches, \PREG_SET_ORDER | \PREG_OFFSET_CAPTURE)) {
             return $content;
         }
@@ -148,7 +150,7 @@ class InjectTwigContentElementMarkersListener
                 continue;
             }
 
-            if (!preg_match('/\bce_([a-z_][a-z0-9_]*)\b/i', $fullTag, $typeMatch)) {
+            if (!preg_match('/\b(?:ce_|content-)([a-z][a-z0-9_]*)\b/i', $fullTag, $typeMatch)) {
                 continue;
             }
 
@@ -174,7 +176,7 @@ class InjectTwigContentElementMarkersListener
             $ceId  = $row['id'];
             $cssId = $row['cssId'];
 
-            $label = $this->resolveLabel($type, $this->framework);
+            $label = $this->resolveLabel($type, $this->translator);
             $attrString = ' data-contao-table="tl_content"'
                 . ' data-contao-id="' . $ceId . '"'
                 . ' data-contao-label="' . htmlspecialchars($label, \ENT_QUOTES | \ENT_SUBSTITUTE, 'UTF-8') . '"';

@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [3.0.1] - 2026-09-06
+
+### Fixed
+- Element/module labels in the preview overlay now resolve via the translator (`CTE.<type>.0` / `FMD.<type>.0`), so Contao 6 fragment elements (accordion, slider/masonry wrappers, …) and bundle/theme types show a proper name instead of the generic fallback.
+- Twig content-element marker detection also matches Contao 6's `content-<type>` wrapper class (in addition to the legacy `ce_<type>`).
+
 ## [3.0.0] - 2026-09-06
 
 ### Changed

@@ -6,8 +6,8 @@ namespace ThinkDigital\ContaoLivePreview\EventListener;
 
 use Contao\ContentModel;
 use Contao\CoreBundle\DependencyInjection\Attribute\AsHook;
-use Contao\CoreBundle\Framework\ContaoFramework;
 use Symfony\Component\HttpFoundation\RequestStack;
+use Symfony\Contracts\Translation\TranslatorInterface;
 use ThinkDigital\ContaoLivePreview\Service\LabelCleanerTrait;
 
 /**
@@ -26,7 +26,7 @@ class InjectContentElementMarkersListener
 
     public function __construct(
         private readonly RequestStack $requestStack,
-        private readonly ContaoFramework $framework,
+        private readonly TranslatorInterface $translator,
     ) {
     }
 
@@ -47,7 +47,7 @@ class InjectContentElementMarkersListener
             return $buffer;
         }
 
-        $label = $this->resolveLabel((string) ($element->type ?? ''), $this->framework);
+        $label = $this->resolveLabel((string) ($element->type ?? ''), $this->translator);
 
         return preg_replace(
             '/(<[a-z][a-z0-9]*\b)/i',

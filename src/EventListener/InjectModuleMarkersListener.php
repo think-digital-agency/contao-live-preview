@@ -5,10 +5,10 @@ declare(strict_types=1);
 namespace ThinkDigital\ContaoLivePreview\EventListener;
 
 use Contao\CoreBundle\DependencyInjection\Attribute\AsHook;
-use Contao\CoreBundle\Framework\ContaoFramework;
+use Symfony\Contracts\Translation\TranslatorInterface;
 use Contao\ModuleModel;
-use Contao\System;
 use Symfony\Component\HttpFoundation\RequestStack;
+use ThinkDigital\ContaoLivePreview\Service\LabelCleanerTrait;
 
 /**
  * Injects data-contao-table="tl_module", data-contao-id="{N}", and
@@ -21,16 +21,18 @@ use Symfony\Component\HttpFoundation\RequestStack;
  * assembling the template). Legacy Module subclasses and Twig-first
  * #[AsFrontendModule] controllers both go through this path.
  *
- * Module labels come from $GLOBALS['TL_LANG']['FMD'] (Frontend Module
- * Definitions), distinct from $GLOBALS['TL_LANG']['CTE'] (Content Type
- * Elements) used by InjectContentElementMarkersListener.
+ * Labels are resolved via the translator (`FMD.<type>.0` / `CTE.<type>.0`,
+ * `contao_default` domain) in LabelCleanerTrait — same as the content-element
+ * listeners.
  */
 #[AsHook('getFrontendModule')]
 class InjectModuleMarkersListener
 {
+    use LabelCleanerTrait;
+
     public function __construct(
         private readonly RequestStack $requestStack,
-        private readonly ContaoFramework $framework,
+        private readonly TranslatorInterface $translator,
     ) {
     }
 
@@ -55,7 +57,7 @@ class InjectModuleMarkersListener
             return $buffer;
         }
 
-        $label = $this->resolveLabel((string) ($model->type ?? ''));
+        $label = $this->resolveLabel((string) ($model->type ?? ''), $this->translator);
 
         return preg_replace(
             '/(<[a-z][a-z0-9]*\b)/i',
@@ -65,16 +67,4 @@ class InjectModuleMarkersListener
         ) ?? $buffer;
     }
 
-    private function resolveLabel(string $type): string
-    {
-        if ('' === $type) {
-            return '';
-        }
-
-        /** @var System $system */
-        $system = $this->framework->getAdapter(System::class);
-        $system->loadLanguageFile('modules');
-
-        return (string) ($GLOBALS['TL_LANG']['FMD'][$type][0] ?? $type);
-    }
 }
