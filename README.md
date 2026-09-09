@@ -82,39 +82,60 @@ Die Vorschau aktualisiert sich automatisch wenn du:
 
 ## Erweiterung: eigene Tabellen einbinden
 
-Über das `PreviewUrlResolverInterface` lässt sich die Extension auf eigene Tabellen ausweiten — zum Beispiel News, Kalender oder Events:
+### Kind-DCAs: nichts zu tun
+
+Eine eigene Kind-Tabelle, die per DCA unter einem Artikel, einer Seite oder einem
+Inhaltselement hängt (`$GLOBALS['TL_DCA']['tl_x']['config']['ptable']` bzw.
+`dynamicPtable`), wird **automatisch** aufgelöst — der Resolver folgt der
+`ptable`-Kette bis zu `tl_content` / `tl_article` / `tl_page`. Kein Code nötig.
+
+### Eigener Resolver für alles andere
+
+Für Tabellen mit nicht-standardmäßiger Ablage (News, Kalender, externe Daten)
+implementierst du `PreviewUrlResolverInterface`. Der Service wird per
+Autoconfiguration in die Resolver-Chain aufgenommen — kein Alias, keine
+Dekoration. Gib für fremde Tabellen `null` zurück; die Chain fragt dann den
+nächsten Resolver, zuletzt den bundle-eigenen.
 
 ```php
-// src/Service/ExtendedPreviewUrlResolver.php
-use ThinkDigital\ContaoLivePreview\Service\PreviewUrlResolver;
+// src/Service/NewsPreviewUrlResolver.php
+use Doctrine\DBAL\Connection;
+use Symfony\Component\DependencyInjection\Attribute\AsTaggedItem;
 use ThinkDigital\ContaoLivePreview\Service\PreviewUrlResolverInterface;
 
-class ExtendedPreviewUrlResolver implements PreviewUrlResolverInterface
+#[AsTaggedItem(priority: 0)] // höher = früher; optional
+class NewsPreviewUrlResolver implements PreviewUrlResolverInterface
 {
-    public function __construct(
-        private readonly PreviewUrlResolver $inner,
-        private readonly Connection $db,
-    ) {}
+    public function __construct(private readonly Connection $db) {}
 
     public function resolve(string $table, int $id): ?array
     {
-        if ('tl_news' === $table) {
-            $row = $this->db->fetchAssociative(
-                'SELECT a.pid FROM tl_news n JOIN tl_news_archive a ON a.id = n.pid WHERE n.id = ?',
-                [$id],
-            );
-            return $row ? $this->inner->resolve('tl_page', (int) $row['pid']) : null;
+        if ('tl_news' !== $table) {
+            return null; // nicht meine Tabelle → nächster Resolver
         }
-        return $this->inner->resolve($table, $id);
+
+        $pid = $this->db->fetchOne(
+            'SELECT a.jumpTo FROM tl_news n JOIN tl_news_archive a ON a.id = n.pid WHERE n.id = ?',
+            [$id],
+        );
+
+        return $pid ? ['pageId' => (int) $pid, 'alias' => ''] : null;
+    }
+
+    // Nur der bundle-eigene Resolver braucht das — hier null genügt.
+    public function resolveRootPage(): ?array
+    {
+        return null;
     }
 }
 ```
 
-```yaml
-# config/services.yaml
-ThinkDigital\ContaoLivePreview\Service\PreviewUrlResolverInterface:
-    alias: App\Service\ExtendedPreviewUrlResolver
-```
+Mindestens `pageId` + `alias` zurückgeben; optionale Zusatz-Keys (`articleId`,
+`contentElementId`, …) verfeinern das Highlighting.
+
+> Volle Kontrolle statt Chain: `PreviewUrlResolverInterface` weiterhin per
+> `alias:` auf einen einzelnen eigenen Service umbiegen — dann ersetzt dieser
+> die komplette Auflösung inkl. `ptable`-Walk.
 
 ---
 
