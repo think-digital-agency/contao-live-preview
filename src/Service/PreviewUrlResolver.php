@@ -4,12 +4,19 @@ declare(strict_types=1);
 
 namespace ThinkDigital\ContaoLivePreview\Service;
 
+use Contao\Controller;
+use Contao\CoreBundle\Framework\Adapter;
+use Contao\CoreBundle\Framework\ContaoFramework;
 use Doctrine\DBAL\Connection;
 
 class PreviewUrlResolver implements PreviewUrlResolverInterface
 {
+    /** @var list<string>|null lazily loaded schema table list for the injection guard */
+    private ?array $knownTables = null;
+
     public function __construct(
         private readonly Connection $connection,
+        private readonly ContaoFramework $framework,
     ) {
     }
 
@@ -24,8 +31,70 @@ class PreviewUrlResolver implements PreviewUrlResolverInterface
             'tl_content' => $this->resolveFromContent($id),
             'tl_article' => $this->resolveFromArticle($id),
             'tl_page'    => $this->resolveFromPage($id),
-            default      => null,
+            default      => $this->resolveFromChildTable($table, $id, 0),
         };
+    }
+
+    /**
+     * Generic fallback for custom child tables (e.g. a bundle's own DCA nested
+     * under an article, a page or a content element). Walks the DCA parent chain
+     * — `config.ptable` for static parents, the record's own `ptable` column when
+     * `config.dynamicPtable` is set — until it reaches tl_content / tl_article /
+     * tl_page, then delegates to the matching resolver above.
+     *
+     * Returns null (→ controller shows the root page, never a wrong record) when
+     * the table is unknown, has no resolvable parent chain, or the chain is
+     * broken. A third-party bundle with a non-standard storage model can still
+     * override the whole service via the PreviewUrlResolverInterface alias.
+     */
+    private function resolveFromChildTable(string $table, int $id, int $depth): ?array
+    {
+        if ($depth > 10 || $id <= 0 || !$this->isKnownTable($table)) {
+            return null;
+        }
+
+        $this->framework->initialize();
+
+        /** @var Adapter<Controller> $controller */
+        $controller = $this->framework->getAdapter(Controller::class);
+        $controller->loadDataContainer($table);
+
+        $config       = $GLOBALS['TL_DCA'][$table]['config'] ?? [];
+        $dynamicPtable = (bool) ($config['dynamicPtable'] ?? false);
+
+        $columns = $dynamicPtable ? 'pid, ptable' : 'pid';
+        $row = $this->connection->fetchAssociative(
+            "SELECT {$columns} FROM {$table} WHERE id = ?",
+            [$id],
+        );
+
+        if (!$row || (int) $row['pid'] <= 0) {
+            return null;
+        }
+
+        $parentTable = $dynamicPtable
+            ? (string) ($row['ptable'] ?: '')
+            : (string) ($config['ptable'] ?? '');
+        $parentId = (int) $row['pid'];
+
+        return match (true) {
+            'tl_content' === $parentTable => $this->resolveFromContent($parentId),
+            'tl_article' === $parentTable => $this->resolveFromArticle($parentId),
+            'tl_page'    === $parentTable => $this->resolveFromPage($parentId),
+            '' !== $parentTable           => $this->resolveFromChildTable($parentTable, $parentId, $depth + 1),
+            default                       => null,
+        };
+    }
+
+    private function isKnownTable(string $table): bool
+    {
+        if (!preg_match('/^tl_[a-z0-9_]+$/', $table)) {
+            return false;
+        }
+
+        $this->knownTables ??= $this->connection->createSchemaManager()->listTableNames();
+
+        return \in_array($table, $this->knownTables, true);
     }
 
     private function resolveFromContent(int $id): ?array

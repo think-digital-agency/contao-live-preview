@@ -5,7 +5,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [3.0.2] - 2026-09-09
 
+### Added
+- Custom child tables are now resolvable in the preview without any integration code. When the edited table is not `tl_content` / `tl_article` / `tl_page`, `PreviewUrlResolver` walks its DCA `ptable` chain (`config.ptable`, or the record's `ptable` column when `config.dynamicPtable` is set) up to a known parent and previews that page. The `PreviewUrlResolverInterface` alias override remains for non-standard storage models. (#9, ADR-021)
+
 ### Fixed
+- The stylus / hover-edit and hot-refresh no longer jump the preview to an unrelated same-ID article (a different domain in multisite setups) when editing a record in a custom child table. `parseContext()` passes the real table through to the resolver instead of coercing unknown tables to `tl_article`. (#9)
 - Element / module / article wrappers no longer lose their own `data-contao-*` markers when the rendered buffer contains a nested `data-contao-table` somewhere inside (an embedded marked element, or — for articles — any already-marked content element). The already-marked guard in `InjectContentElementMarkersListener`, `InjectModuleMarkersListener` and `InjectArticleMarkersListener` now checks only the wrapper's opening tag, matching `InjectTwigContentElementMarkersListener`. The article guard in particular was previously tripped on every non-empty article. (#10)
 
 ## [3.0.1] - 2026-09-06

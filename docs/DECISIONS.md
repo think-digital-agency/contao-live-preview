@@ -468,3 +468,33 @@ The button shape (pill `border-radius: 20px`, `padding: 8px 12px`) matches Conta
 - (+) Zero configuration — works on both versions automatically
 - (+) No version number checks — adapts to whatever the installed Contao provides
 - (-) If a future Contao version reintroduces `--header-text` with a different meaning, the fallback chain would misbehave — low risk given the variable was removed, not repurposed
+
+---
+
+## ADR-021: Automatic DCA `ptable` walk for custom child tables
+
+**Date:** 2026-09-09
+**Status:** Accepted
+
+**Context:**
+Two independent integrators (GitHub #9, KIWI. Werbeagentur) hit the same wall: the stylus/`clp:edit` action and the preview resolver only understood `tl_content`, `tl_article`, `tl_page` (+ `tl_module`/`tl_layout` for the no-resolve path). A bundle with its own child DCA (records nested under an article, a page or a content element) got:
+
+- `parseContext()` in the JS coerced the unknown `table` to `{ table: 'tl_article', id }` **before** the resolve request — so the preview jumped to whatever `tl_article` happened to share that ID (in a multisite, a different domain), and hot-refresh broke on the wrong `articleSelectors`.
+- The resolver's `resolve()` had `default => null`, so even a correct table never produced a preview URL.
+
+The `Referer` cannot carry the context back (backend sets `<meta referrer=origin>`, the query is stripped), so it has to be solved on both ends.
+
+**Decision:**
+Resolve custom child tables automatically from their DCA, no registration:
+
+1. **JS (`parseContext`)** — for any `act=edit` URL whose table is not one of the tables already handled, return `{ table: <realTable>, id }` unchanged. Never fall through to the `do=article` catch-all. `clp:edit` builds a standard `?do=<current>&table=<table>&act=edit&id=<id>` URL for unknown tables instead of bailing.
+2. **PHP (`PreviewUrlResolver::resolveFromChildTable`)** — `default` branch of `resolve()`. `loadDataContainer($table)`, then walk the parent chain: `config.ptable` for a static parent, the record's own `ptable` column when `config.dynamicPtable` is set. Recurse (depth cap 10) until `tl_content` / `tl_article` / `tl_page`, then delegate to the existing resolvers. Table name validated against `/^tl_[a-z0-9_]+$/` **and** the live schema table list before it is interpolated into SQL. A broken/absent chain → `null` → controller falls back to the root page.
+
+The single-service override via the `PreviewUrlResolverInterface` alias stays as the escape hatch for non-standard storage models (custom parent lookup, external data). A tagged multi-resolver chain was considered but deferred — the automatic walk covers the standard nested-DCA case that both reporters actually had, and KIWI. offered to contribute the chain as a separate PR.
+
+**Consequences:**
+- (+) Standard child DCAs (the common case) work with zero integration code
+- (+) Wrong-article / wrong-domain jump (#9) fixed even when the resolver returns nothing — JS no longer guesses
+- (+) SQL injection guard on the dynamic table name (regex + schema existence check)
+- (−) One `loadDataContainer()` + one `SELECT pid[, ptable]` per chain hop on the resolve request (cached DCA, single-row lookups — negligible)
+- (−) Tables whose parent chain does not terminate in the three core tables still need the interface override

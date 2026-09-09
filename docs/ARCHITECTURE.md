@@ -33,7 +33,7 @@ packages/contao-live-preview-bundle/
 │   └── Service/
 │       ├── LabelCleanerTrait.php               # Shared cleanLabel() + resolveLabel() for CE listeners + controller
 │       ├── PreviewUrlResolverInterface.php     # Extension point for third-party bundles
-│       └── PreviewUrlResolver.php              # DBAL parent-chain resolver
+│       └── PreviewUrlResolver.php              # DBAL parent-chain resolver (+ generic DCA ptable walk for custom child tables)
 └── templates/
     └── backend/
         └── live_preview_sidebar.html.twig      # Sidebar HTML (data-turbo-permanent)
@@ -52,9 +52,9 @@ packages/contao-live-preview-bundle/
 | `InjectTwigContentElementMarkersListener` | `EventListener\InjectTwigContentElementMarkersListener` | `RequestStack`, `ContaoFramework`, `Connection` |
 | `InjectModuleMarkersListener` | `EventListener\InjectModuleMarkersListener` | `RequestStack`, `ContaoFramework` |
 | `PreviewResolverController` | `Controller\PreviewResolverController` | `PreviewUrlResolverInterface`, `ContaoFramework` |
-| `PreviewUrlResolver` | `Service\PreviewUrlResolver` | `Doctrine\DBAL\Connection` |
+| `PreviewUrlResolver` | `Service\PreviewUrlResolver` | `Doctrine\DBAL\Connection`, `ContaoFramework` |
 
-All services are autowired and autoconfigured via the `Vendor\ContaoLivePreviewBundle\` resource scan. `PreviewUrlResolverInterface` is explicitly aliased to `PreviewUrlResolver` in `services.yaml` so third-party bundles can override it.
+All services are autowired and autoconfigured via the `Vendor\ContaoLivePreviewBundle\` resource scan. `PreviewUrlResolverInterface` is explicitly aliased to `PreviewUrlResolver` in `services.yaml` so third-party bundles can override it. Most custom child tables need no override at all — `PreviewUrlResolver::resolveFromChildTable()` walks the DCA `ptable` chain (`config.ptable`, or the record's `ptable` column when `config.dynamicPtable` is set) up to `tl_content` / `tl_article` / `tl_page` automatically (ADR-021).
 
 ---
 
@@ -65,7 +65,7 @@ All services are autowired and autoconfigured via the `Vendor\ContaoLivePreviewB
 | GET | `/contao/live-preview/resolve` | `PreviewResolverController` | `ROLE_USER` | `_scope: backend` |
 
 Query parameters:
-- `table` — source database table (`tl_content`, `tl_article`, `tl_page`)
+- `table` — source database table (`tl_content`, `tl_article`, `tl_page`, or any custom child table resolvable via its DCA `ptable` chain)
 - `id` — record ID
 
 Response: `application/json`
@@ -95,6 +95,8 @@ Response: `application/json`
 - `contentElementLabel` — cleaned DCA label from `$GLOBALS['TL_LANG']['CTE']`; suffix words (Anfang/Start/Ende/Wrapper) stripped; empty string if no label found (never the raw type key)
 
 The `previewUrl` is built via `PageModel::findWithDetails($pageId)->getAbsoluteUrl()`. Non-routable page types (`error_404`, `folder`, `root`) are handled by walking up to the nearest routable ancestor.
+
+**Custom child tables:** when `table` is none of the three known tables, `resolveFromChildTable()` loads its DCA and walks the parent chain — `config.ptable` for a static parent, the record's own `ptable` column when `config.dynamicPtable` is set — recursing (depth cap 10) until it reaches `tl_content` / `tl_article` / `tl_page`. The table name is validated (`/^tl_[a-z0-9_]+$/` + schema-manager existence check) before interpolation. A broken or absent chain returns `null` → the controller falls back to the root page (never a wrong record). The JS side (`parseContext`) passes the real table through for any `act=edit` URL instead of coercing unknown tables to `tl_article` (which previously jumped the preview to a same-id article, possibly on another domain — issue #9).
 
 ---
 
