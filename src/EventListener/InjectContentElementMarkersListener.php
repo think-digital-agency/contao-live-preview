@@ -37,13 +37,18 @@ class InjectContentElementMarkersListener
             return $buffer;
         }
 
-        // Skip if already marked (e.g. by the theme).
-        if (str_contains($buffer, 'data-contao-table=')) {
+        $id = (int) $element->id;
+        if ($id <= 0) {
             return $buffer;
         }
 
-        $id = (int) $element->id;
-        if ($id <= 0) {
+        // Skip only if the *opening tag* is already marked (e.g. by the theme).
+        // Scanning the whole buffer would also match a nested data-contao-table=
+        // deeper in the element markup and drop the wrapper's own markers (#10) —
+        // mirror InjectTwigContentElementMarkersListener, which checks the tag.
+        if (preg_match('/<[a-z][a-z0-9]*\b[^>]*>/i', $buffer, $openingTag)
+            && str_contains($openingTag[0], 'data-contao-table=')
+        ) {
             return $buffer;
         }
 

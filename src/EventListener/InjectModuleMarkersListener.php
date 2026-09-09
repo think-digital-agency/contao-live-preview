@@ -47,13 +47,18 @@ class InjectModuleMarkersListener
             return $buffer;
         }
 
-        // Skip if already marked (e.g. by the theme or another listener).
-        if (str_contains($buffer, 'data-contao-table=')) {
+        $id = (int) $model->id;
+        if ($id <= 0) {
             return $buffer;
         }
 
-        $id = (int) $model->id;
-        if ($id <= 0) {
+        // Skip only if the *opening tag* is already marked (theme or another
+        // listener). Scanning the whole buffer would also match a nested
+        // data-contao-table= from an embedded element and drop the wrapper's
+        // own markers (see #10 for the content-element equivalent).
+        if (preg_match('/<[a-z][a-z0-9]*\b[^>]*>/i', $buffer, $openingTag)
+            && str_contains($openingTag[0], 'data-contao-table=')
+        ) {
             return $buffer;
         }
 
