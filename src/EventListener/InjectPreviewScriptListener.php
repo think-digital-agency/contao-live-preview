@@ -215,24 +215,49 @@ document.addEventListener('mouseout',function(e){
   if(_hoverBadge&&rel&&(rel===_hoverBadge||_hoverBadge.contains(rel)))return;
   clpHoverClear();
 });
-// Keep ?_clp=1 on same-origin link navigation so the script survives page changes.
-// Runs in bubble phase (false) so JS toggle handlers (e.g. mobile menu) can call
+// Keep ?_clp=1 on same-origin in-frame navigation so the preview script is
+// re-injected on every page the editor browses to. Without this, following an
+// internal link (or submitting a form) drops the marker/hover/refresh machinery
+// until the next backend resolve.
+function _clpRewrite(raw){
+  try{
+    var u=new URL(raw,window.location.href);
+    if(u.origin!==window.location.origin)return null;
+    if(u.searchParams.get('_clp')!=='1')u.searchParams.set('_clp','1');
+    return u;
+  }catch(err){return null;}
+}
+// Bubble phase (false) so JS toggle handlers (e.g. mobile menu) can call
 // preventDefault() first — if they did, we skip navigation entirely.
 document.addEventListener('click',function(e){
-  if(e.defaultPrevented)return;
+  if(e.defaultPrevented||e.button!==0||e.metaKey||e.ctrlKey||e.shiftKey||e.altKey)return;
   var a=e.target.closest?e.target.closest('a[href]'):null;
-  if(!a)return;
+  if(!a||a.hasAttribute('download'))return;
+  if(a.target&&a.target!==''&&a.target!=='_self')return; // _blank etc. → real new tab, leave it
   var href=a.getAttribute('href')||'';
-  if(!href||href.charAt(0)==='#')return;
-  try{
-    var u=new URL(a.href,window.location.href);
-    if(u.origin!==window.location.origin)return;
-    if(u.searchParams.get('_clp')==='1')return;
-    u.searchParams.set('_clp','1');
-    e.preventDefault();
-    window.location.href=u.toString();
-  }catch(err){}
+  if(!href||href.charAt(0)==='#'||/^(mailto:|tel:|javascript:)/i.test(href))return;
+  var u=_clpRewrite(a.href);
+  if(!u)return;
+  // Pure in-page anchor on the current URL → let the browser scroll.
+  if(u.hash&&u.pathname===window.location.pathname&&u.search===window.location.search)return;
+  e.preventDefault();
+  window.location.assign(u.toString());
 },false);
+// Forms lose the marker on submit: GET rebuilds the query from fields (so _clp
+// must ride as a hidden input), POST keeps it only if it is in the action URL.
+document.addEventListener('submit',function(e){
+  var f=e.target;
+  if(!f||f.tagName!=='FORM')return;
+  var u=_clpRewrite(f.getAttribute('action')||window.location.href);
+  if(!u)return;
+  if((f.method||'get').toLowerCase()==='get'){
+    if(!f.querySelector('input[name="_clp"]')){
+      var i=document.createElement('input');i.type='hidden';i.name='_clp';i.value='1';f.appendChild(i);
+    }
+  }else{
+    f.setAttribute('action',u.toString());
+  }
+},true);
 })();</script>
 HTML;
     }
