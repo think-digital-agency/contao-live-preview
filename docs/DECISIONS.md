@@ -490,11 +490,21 @@ Resolve custom child tables automatically from their DCA, no registration:
 1. **JS (`parseContext`)** — for any `act=edit` URL whose table is not one of the tables already handled, return `{ table: <realTable>, id }` unchanged. Never fall through to the `do=article` catch-all. `clp:edit` builds a standard `?do=<current>&table=<table>&act=edit&id=<id>` URL for unknown tables instead of bailing.
 2. **PHP (`PreviewUrlResolver::resolveFromChildTable`)** — `default` branch of `resolve()`. `loadDataContainer($table)`, then walk the parent chain: `config.ptable` for a static parent, the record's own `ptable` column when `config.dynamicPtable` is set. Recurse (depth cap 10) until `tl_content` / `tl_article` / `tl_page`, then delegate to the existing resolvers. Table name validated against `/^tl_[a-z0-9_]+$/` **and** the live schema table list before it is interpolated into SQL. A broken/absent chain → `null` → controller falls back to the root page.
 
-The single-service override via the `PreviewUrlResolverInterface` alias stays as the escape hatch for non-standard storage models (custom parent lookup, external data). A tagged multi-resolver chain was considered but deferred — the automatic walk covers the standard nested-DCA case that both reporters actually had, and KIWI. offered to contribute the chain as a separate PR.
+For the cases the automatic walk cannot reach (non-standard storage, custom parent lookup, external data), the resolver is a **priority chain** (`ChainPreviewUrlResolver`, added 2026-09-09):
+
+- `_instanceof` tags every `PreviewUrlResolverInterface` service `contao_live_preview.preview_url_resolver`.
+- `ChainPreviewUrlResolver` (aliased to the interface, `autoconfigure: false` so it is not in its own iterator) runs the tagged resolvers by priority, first non-null wins.
+- The bundle's own `PreviewUrlResolver` is pinned to priority `-1000` → always last.
+- Third parties: `implements PreviewUrlResolverInterface` + optional `#[AsTaggedItem(priority: N)]`, `return null` for foreign tables. `resolveRootPage()` may return `null` (the chain delegates it to the core).
+- Re-aliasing the interface to a single service still works as the full-control escape hatch.
+
+This replaces the previous "one bundle re-aliases the interface" model, under which two integrators could not coexist and an override silently lost the automatic ptable walk.
 
 **Consequences:**
 - (+) Standard child DCAs (the common case) work with zero integration code
+- (+) Any number of third-party resolvers coexist; each can also override a core table by using a higher priority
 - (+) Wrong-article / wrong-domain jump (#9) fixed even when the resolver returns nothing — JS no longer guesses
 - (+) SQL injection guard on the dynamic table name (regex + schema existence check)
 - (−) One `loadDataContainer()` + one `SELECT pid[, ptable]` per chain hop on the resolve request (cached DCA, single-row lookups — negligible)
-- (−) Tables whose parent chain does not terminate in the three core tables still need the interface override
+- (−) Tables whose parent chain does not terminate in the three core tables still need a custom tagged resolver
+- (−) An existing bundle that re-aliased `PreviewUrlResolverInterface` now shadows the chain instead of just the core resolver — no known shipped consumer (feature is new in 3.0.2), documented as the escape hatch

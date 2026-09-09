@@ -4,6 +4,12 @@ services:
         autoconfigure: true
         public: false
 
+    # Every PreviewUrlResolverInterface implementation joins the resolver chain
+    # via #[AutoconfigureTag] on the interface. Third-party bundles: implement
+    # the interface + optionally #[AsTaggedItem(priority: N)] — higher first.
+    # The two services below opt out with autoconfigure:false (core re-adds the
+    # tag by hand at the lowest priority; the chain must not be in its own list).
+
     ThinkDigital\ContaoLivePreview\:
         resource: '../../*'
         exclude:
@@ -11,7 +17,23 @@ services:
             - '../../DependencyInjection/'
             - '../../ContaoLivePreviewBundle.php'
 
-    # Explicit alias so third-party bundles can override the resolver by
-    # rebinding this interface in their own services.yaml.
+    # Core resolver: pinned to the lowest priority so third-party resolvers are
+    # always consulted first. autoconfigure:false prevents a second (priority-0)
+    # tag from _instanceof.
+    ThinkDigital\ContaoLivePreview\Service\PreviewUrlResolver:
+        autoconfigure: false
+        tags:
+            - { name: contao_live_preview.preview_url_resolver, priority: -1000 }
+
+    # The chain the controller actually calls. autoconfigure:false keeps it out
+    # of its own tagged iterator.
+    ThinkDigital\ContaoLivePreview\Service\ChainPreviewUrlResolver:
+        autoconfigure: false
+        arguments:
+            $resolvers: !tagged_iterator contao_live_preview.preview_url_resolver
+            $core: '@ThinkDigital\ContaoLivePreview\Service\PreviewUrlResolver'
+
+    # Injected wherever the interface is type-hinted (the controller). A bundle
+    # that needs full control can still re-alias this to its own implementation.
     ThinkDigital\ContaoLivePreview\Service\PreviewUrlResolverInterface:
-        alias: ThinkDigital\ContaoLivePreview\Service\PreviewUrlResolver
+        alias: ThinkDigital\ContaoLivePreview\Service\ChainPreviewUrlResolver

@@ -3,6 +3,15 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [3.0.3] - 2026-09-09
+
+### Added
+- Third-party preview resolvers now compose: every `PreviewUrlResolverInterface` service is tagged into a priority chain (`ChainPreviewUrlResolver`), first non-null result wins, the bundle's own resolver runs last. Two bundles can add tables (or override a core one) without fighting over the service alias. Re-aliasing the interface stays as the full-control escape hatch. (ADR-021)
+
+### Fixed
+- Preview overlay: in dual-highlight mode (content element + article), the article badge no longer hides behind the element badge when the article/group has no padding — overlapping badges are stacked. A badge on a box shorter than itself now renders just above the box instead of overflowing it. (B3 point 4)
+- `?_clp=1` is kept across in-frame navigation for `target="_blank"` internal links (now open a real tab instead of being trapped in the iframe), form submissions (search / filters), and is correctly skipped for `download` / `mailto:` / `tel:` / modified clicks. Previously these dropped the marker/hover/refresh machinery until the next backend resolve. (B3 point 5)
+
 ## [3.0.2] - 2026-09-09
 
 ### Added
