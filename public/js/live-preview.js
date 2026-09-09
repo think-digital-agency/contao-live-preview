@@ -149,6 +149,19 @@
 
         if (!sidebar || !frame) return;
 
+        // The sidebar lives on <html> and survives Turbo body swaps — including
+        // swaps to pages that are not the normal backend chrome: the standalone
+        // error page (@Contao/error/*), the login screen, the install tool.
+        // Go dormant there: collapse the sidebar so it doesn't cover the page,
+        // and skip context resolve + iframe reload (which would otherwise fire on
+        // every failed navigation). onPageReady re-activates on the next real
+        // backend page.
+        if (!document.body.classList.contains('be_main') && !document.getElementById('tmenu')) {
+            document.body.classList.remove('clp-open');
+            sidebar.classList.remove('clp-open');
+            return;
+        }
+
         syncHeaderHeight();
 
         // Each navigation is a fresh highlight cycle — allow one highlight per page.
@@ -198,8 +211,10 @@
             // Also strip the server-injected #clp-right from every incoming body —
             // our sidebar lives on <html> and must not be duplicated on every nav.
             document.addEventListener('turbo:before-render', (e) => {
-                e.detail.newBody.classList.toggle('clp-open', isOpen);
-                const dup = e.detail.newBody.querySelector('#clp-right');
+                const nb = e.detail.newBody;
+                const isBackend = nb.classList.contains('be_main') || !!nb.querySelector('#tmenu');
+                nb.classList.toggle('clp-open', isBackend && isOpen);
+                const dup = nb.querySelector('#clp-right');
                 if (dup) dup.remove();
             });
 

@@ -3,6 +3,11 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [3.0.4] - 2026-09-09
+
+### Fixed
+- The sidebar (which lives on `<html>` and survives Turbo body swaps) no longer covers or loops on pages that are not the normal backend chrome — the standalone error page, the login screen, the install tool. `live-preview.js` now goes dormant there: it collapses the sidebar and skips context resolve + iframe reload (previously every failed navigation triggered another `/contao/live-preview/resolve` request and an iframe reload). It reactivates on the next real backend page.
+
 ## [3.0.3] - 2026-09-09
 
 ### Added
