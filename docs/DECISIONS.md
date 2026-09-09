@@ -81,6 +81,7 @@ Earlier revisions injected the sidebar as a third flex child of Contao's `#conta
 4. The sidebar uses `position: fixed; top: 0; right: 0; bottom: 0` and is always the full viewport height.
 5. When open (desktop ≥ 1201px), both `#header` and `#container` receive `padding-right: var(--clp-saved-width)` so neither overlaps with the sidebar. Both use a CSS transition when the `clp-animate` class is present.
 6. A `window.__clpLoaded` guard prevents the IIFE from executing a second time if the script ever appears in a body context.
+7. Because the sidebar now survives *every* body swap — including swaps to pages that are not the backend chrome (the standalone `@Contao/error/*` page, the login screen, the install tool) — `onPageReady` and the `turbo:before-render` listener check for `body.be_main` / `#tmenu` and, when absent, put the sidebar dormant: collapse it and skip context resolve + iframe reload. Without this the sidebar covered the error page and fired a `/contao/live-preview/resolve` request on every failed navigation.
 
 **Consequences:**
 - (+) Sidebar survives full page reloads — iframe never blanks
