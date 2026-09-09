@@ -21,7 +21,7 @@ packages/contao-live-preview-bundle/
 │   ├── DependencyInjection/
 │   │   └── ContaoLivePreviewExtension.php      # DI extension, loads services.yaml
 │   ├── EventListener/
-│   │   ├── InjectLivePreviewListener.php       # outputBackendTemplate hook; asset URLs via Packages service
+│   │   ├── InjectLivePreviewListener.php       # outputBackendTemplate hook; asset URLs via Packages, backend URL via contao_backend route
 │   │   ├── InjectPreviewScriptListener.php     # KernelEvents::RESPONSE (-200) — injects highlight+hover script
 │   │   ├── InjectArticleMarkersListener.php    # parseFrontendTemplate hook — auto-injects article data-attrs
 │   │   ├── InjectContentElementMarkersListener.php # getContentElement hook — legacy CEs + RSCE
@@ -46,7 +46,7 @@ packages/contao-live-preview-bundle/
 
 | Service | Class | Dependencies |
 |---|---|---|
-| `InjectLivePreviewListener` | `EventListener\InjectLivePreviewListener` | `Twig\Environment`, `RequestStack`, `Packages` |
+| `InjectLivePreviewListener` | `EventListener\InjectLivePreviewListener` | `Twig\Environment`, `RequestStack`, `Packages`, `UrlGeneratorInterface` |
 | `InjectPreviewScriptListener` | `EventListener\InjectPreviewScriptListener` | — |
 | `InjectArticleMarkersListener` | `EventListener\InjectArticleMarkersListener` | `RequestStack` |
 | `InjectContentElementMarkersListener` | `EventListener\InjectContentElementMarkersListener` | `RequestStack`, `ContaoFramework` |

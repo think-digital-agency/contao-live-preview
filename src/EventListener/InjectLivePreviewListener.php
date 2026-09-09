@@ -7,6 +7,7 @@ namespace ThinkDigital\ContaoLivePreview\EventListener;
 use Contao\CoreBundle\DependencyInjection\Attribute\AsHook;
 use Symfony\Component\Asset\Packages;
 use Symfony\Component\HttpFoundation\RequestStack;
+use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 use Twig\Environment;
 
 /**
@@ -27,9 +28,10 @@ use Twig\Environment;
 class InjectLivePreviewListener
 {
     public function __construct(
-        private readonly Environment  $twig,
-        private readonly RequestStack $requestStack,
-        private readonly Packages     $packages,
+        private readonly Environment           $twig,
+        private readonly RequestStack          $requestStack,
+        private readonly Packages              $packages,
+        private readonly UrlGeneratorInterface $urlGenerator,
     ) {
     }
 
@@ -50,7 +52,15 @@ class InjectLivePreviewListener
             }
         }
 
-        $sidebarHtml = $this->twig->render('@ContaoLivePreview/backend/live_preview_sidebar.html.twig');
+        // Canonical backend entry point (respects contao.backend.route_prefix and
+        // subdirectory installs). The JS builds edit / duplicate / insert URLs
+        // from this, never from window.location.pathname — which may be a
+        // sub-route like /contao/template-studio and would 404.
+        $backendUrl = $this->urlGenerator->generate('contao_backend');
+
+        $sidebarHtml = $this->twig->render('@ContaoLivePreview/backend/live_preview_sidebar.html.twig', [
+            'backend_url' => $backendUrl,
+        ]);
 
         $publicDir = \dirname(__DIR__, 2) . '/public';
         $cssVer    = @filemtime($publicDir . '/css/live-preview.css') ?: 1;
