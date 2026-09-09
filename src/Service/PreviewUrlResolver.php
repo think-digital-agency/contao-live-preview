@@ -42,10 +42,16 @@ class PreviewUrlResolver implements PreviewUrlResolverInterface
      * `config.dynamicPtable` is set — until it reaches tl_content / tl_article /
      * tl_page, then delegates to the matching resolver above.
      *
+     * Only tables that actually declare a parent relationship in their DCA
+     * (`config.ptable` or `config.dynamicPtable`) and carry a real `pid` column
+     * are followed — so a root table reached mid-walk (tl_theme via tl_module,
+     * …) or a table with no parent (tl_news) ends the walk with null rather
+     * than a SQL error.
+     *
      * Returns null (→ controller shows the root page, never a wrong record) when
-     * the table is unknown, has no resolvable parent chain, or the chain is
-     * broken. A third-party bundle with a non-standard storage model can still
-     * override the whole service via the PreviewUrlResolverInterface alias.
+     * the table is unknown, declares no parent, or the chain is broken. A
+     * third-party bundle with a non-standard storage model can register a tagged
+     * PreviewUrlResolverInterface service (ADR-021) or override the alias.
      */
     private function resolveFromChildTable(string $table, int $id, int $depth): ?array
     {
@@ -59,23 +65,41 @@ class PreviewUrlResolver implements PreviewUrlResolverInterface
         $controller = $this->framework->getAdapter(Controller::class);
         $controller->loadDataContainer($table);
 
-        $config       = $GLOBALS['TL_DCA'][$table]['config'] ?? [];
+        $config        = $GLOBALS['TL_DCA'][$table]['config'] ?? [];
         $dynamicPtable = (bool) ($config['dynamicPtable'] ?? false);
+        $staticPtable  = (string) ($config['ptable'] ?? '');
 
-        $columns = $dynamicPtable ? 'pid, ptable' : 'pid';
-        $row = $this->connection->fetchAssociative(
-            "SELECT {$columns} FROM {$table} WHERE id = ?",
-            [$id],
-        );
+        // Not a DCA child table (no parent declared) → end of the line.
+        if (!$dynamicPtable && '' === $staticPtable) {
+            return null;
+        }
+
+        $tableColumns = $this->columnNames($table);
+        $needed       = $dynamicPtable ? ['pid', 'ptable'] : ['pid'];
+
+        foreach ($needed as $col) {
+            if (!\in_array($col, $tableColumns, true)) {
+                return null;
+            }
+        }
+
+        $columns = implode(', ', $needed);
+
+        try {
+            $row = $this->connection->fetchAssociative(
+                "SELECT {$columns} FROM {$table} WHERE id = ?",
+                [$id],
+            );
+        } catch (\Throwable) {
+            return null;
+        }
 
         if (!$row || (int) $row['pid'] <= 0) {
             return null;
         }
 
-        $parentTable = $dynamicPtable
-            ? (string) ($row['ptable'] ?: '')
-            : (string) ($config['ptable'] ?? '');
-        $parentId = (int) $row['pid'];
+        $parentTable = $dynamicPtable ? (string) ($row['ptable'] ?: '') : $staticPtable;
+        $parentId    = (int) $row['pid'];
 
         return match (true) {
             'tl_content' === $parentTable => $this->resolveFromContent($parentId),
@@ -95,6 +119,18 @@ class PreviewUrlResolver implements PreviewUrlResolverInterface
         $this->knownTables ??= $this->connection->createSchemaManager()->listTableNames();
 
         return \in_array($table, $this->knownTables, true);
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function columnNames(string $table): array
+    {
+        try {
+            return array_keys($this->connection->createSchemaManager()->listTableColumns($table));
+        } catch (\Throwable) {
+            return [];
+        }
     }
 
     private function resolveFromContent(int $id): ?array

@@ -89,12 +89,39 @@ function clpVisTarget(el){var cc=String(el.className||'').split(/\s+/);for(var i
 function clpClear(){if(_elVis){_elVis.classList.remove('clp-sel','clp-sel-secondary');_elVis=null;}_el=null;if(_elCeVis){_elCeVis.classList.remove('clp-sel');_elCeVis=null;}_elCe=null;if(_badge){_badge.remove();_badge=null;}if(_badgeCe){_badgeCe.remove();_badgeCe=null;}}
 function clpHoverClear(){if(_hoverElVis){_hoverElVis.classList.remove('clp-hover');_hoverElVis=null;}_hoverEl=null;if(_hoverBadge){_hoverBadge.remove();_hoverBadge=null;}}
 function clpIsFixed(el){var n=el;while(n&&n!==document.body){if(getComputedStyle(n).position==='fixed')return true;n=n.parentElement;}return false;}
-function clpBadgePos(b,el){var r=el.getBoundingClientRect();if(clpIsFixed(el)){b.style.position='fixed';b.style.top=(r.top+2)+'px';b.style.left=(r.left+2)+'px';}else{b.style.position='';b.style.top=(window.scrollY+r.top+2)+'px';b.style.left=(window.scrollX+r.left+2)+'px';}}
+// Position a badge at the top-left of its target. When the target box is too
+// short to contain the badge (empty article / element group with little padding),
+// render it just ABOVE the box instead of overflowing it, clamped into view.
+function clpBadgePos(b,el){
+  var r=el.getBoundingClientRect();
+  var bh=b.offsetHeight||24;
+  var above=r.height<bh+4;
+  if(clpIsFixed(el)){
+    b.style.position='fixed';
+    b.style.top=(above?Math.max(2,r.top-bh-2):r.top+2)+'px';
+    b.style.left=(r.left+2)+'px';
+  }else{
+    b.style.position='';
+    var t=window.scrollY+r.top;
+    b.style.top=(above?Math.max(window.scrollY+2,t-bh-2):t+2)+'px';
+    b.style.left=(window.scrollX+r.left+2)+'px';
+  }
+}
+function _rectsOverlap(a,c){return !(a.right<=c.left||c.right<=a.left||a.bottom<=c.top||c.bottom<=a.top);}
+// Dual-highlight mode stacks the content-element badge and the article badge on
+// the same top-left corner whenever the article/group has no own padding. Push
+// the (secondary) article badge below the CE badge so both stay readable.
+function clpDeconflict(){
+  if(!_badge||!_badgeCe)return;
+  if(_rectsOverlap(_badge.getBoundingClientRect(),_badgeCe.getBoundingClientRect())){
+    _badge.style.top=((parseFloat(_badge.style.top)||0)+_badgeCe.offsetHeight+4)+'px';
+  }
+}
 function _mkBadge(cls,lbl,table,editId){var b=document.createElement('div');b.className=cls;var s=document.createElement('span');s.textContent=lbl;b.appendChild(s);var btn=document.createElement('button');btn.type='button';btn.className='clp-badge-edit';btn.innerHTML=_editIcon;if(table&&editId){btn.addEventListener('click',function(ev){ev.stopPropagation();window.parent.postMessage({type:'clp:edit',table:table,id:editId},'*');});}b.appendChild(btn);if(table==='tl_content'&&editId){var sep=document.createElement('span');sep.className='clp-badge-sep';b.appendChild(sep);var db=document.createElement('button');db.type='button';db.className='clp-badge-action';db.title='Element duplizieren';db.innerHTML=_dupIcon;db.addEventListener('click',function(ev){ev.stopPropagation();window.parent.postMessage({type:'clp:duplicate',id:editId},'*');});b.appendChild(db);var nb=document.createElement('button');nb.type='button';nb.className='clp-badge-action';nb.title='Neues Element danach';nb.innerHTML=_addIcon;nb.addEventListener('click',function(ev){ev.stopPropagation();window.parent.postMessage({type:'clp:insert-after',id:editId},'*');});b.appendChild(nb);}document.body.appendChild(b);return b;}
 function makeBadge(lbl,t,id){return _mkBadge('clp-badge',lbl,t,id);}
 function makeHoverBadge(lbl,t,id){return _mkBadge('clp-hover-badge',lbl,t,id);}
 function getCeLabel(el){if(el.dataset&&el.dataset.contaoLabel&&el.dataset.contaoLabel!==''){return el.dataset.contaoLabel.toUpperCase();}var cc=String(el.className||'').split(/\s+/);for(var i=0;i<cc.length;i++){if(cc[i].indexOf('ce_')===0){return cc[i].slice(3).replace(/([a-z])([A-Z])/g,'$1 $2').replace(/_/g,' ').toUpperCase();}}return 'INHALTSELEMENT';}
-function clpReposAll(){if(_badge&&_elVis)clpBadgePos(_badge,_elVis);if(_badgeCe&&_elCeVis)clpBadgePos(_badgeCe,_elCeVis);if(_hoverBadge&&_hoverElVis)clpBadgePos(_hoverBadge,_hoverElVis);}
+function clpReposAll(){if(_badge&&_elVis)clpBadgePos(_badge,_elVis);if(_badgeCe&&_elCeVis)clpBadgePos(_badgeCe,_elCeVis);if(_hoverBadge&&_hoverElVis)clpBadgePos(_hoverBadge,_hoverElVis);clpDeconflict();}
 window.addEventListener('resize',clpReposAll,{passive:true});
 function highlight(el,bh,label,table,editId){
   var vis=clpVisTarget(el);
@@ -124,6 +151,7 @@ window.addEventListener('message',function(e){
       // in fully-bootstrapped frontend context, so language files are always complete.
       var lbl=getCeLabel(el)||e.data.label||'';if(lbl){_badgeCe=makeBadge(lbl,'tl_content',_contentElementId);clpBadgePos(_badgeCe,elVis);}
       var albl=e.data.articleLabel||'';if(albl){_badge=makeBadge(albl,'tl_article',_articleId);_badge.style.zIndex='2147483646';clpBadgePos(_badge,aElVis);}
+      clpDeconflict();
     }else if(el||aEl){
       var isCe=!!_contentElementId;
       var target=el||aEl;
@@ -187,24 +215,49 @@ document.addEventListener('mouseout',function(e){
   if(_hoverBadge&&rel&&(rel===_hoverBadge||_hoverBadge.contains(rel)))return;
   clpHoverClear();
 });
-// Keep ?_clp=1 on same-origin link navigation so the script survives page changes.
-// Runs in bubble phase (false) so JS toggle handlers (e.g. mobile menu) can call
+// Keep ?_clp=1 on same-origin in-frame navigation so the preview script is
+// re-injected on every page the editor browses to. Without this, following an
+// internal link (or submitting a form) drops the marker/hover/refresh machinery
+// until the next backend resolve.
+function _clpRewrite(raw){
+  try{
+    var u=new URL(raw,window.location.href);
+    if(u.origin!==window.location.origin)return null;
+    if(u.searchParams.get('_clp')!=='1')u.searchParams.set('_clp','1');
+    return u;
+  }catch(err){return null;}
+}
+// Bubble phase (false) so JS toggle handlers (e.g. mobile menu) can call
 // preventDefault() first — if they did, we skip navigation entirely.
 document.addEventListener('click',function(e){
-  if(e.defaultPrevented)return;
+  if(e.defaultPrevented||e.button!==0||e.metaKey||e.ctrlKey||e.shiftKey||e.altKey)return;
   var a=e.target.closest?e.target.closest('a[href]'):null;
-  if(!a)return;
+  if(!a||a.hasAttribute('download'))return;
+  if(a.target&&a.target!==''&&a.target!=='_self')return; // _blank etc. → real new tab, leave it
   var href=a.getAttribute('href')||'';
-  if(!href||href.charAt(0)==='#')return;
-  try{
-    var u=new URL(a.href,window.location.href);
-    if(u.origin!==window.location.origin)return;
-    if(u.searchParams.get('_clp')==='1')return;
-    u.searchParams.set('_clp','1');
-    e.preventDefault();
-    window.location.href=u.toString();
-  }catch(err){}
+  if(!href||href.charAt(0)==='#'||/^(mailto:|tel:|javascript:)/i.test(href))return;
+  var u=_clpRewrite(a.href);
+  if(!u)return;
+  // Pure in-page anchor on the current URL → let the browser scroll.
+  if(u.hash&&u.pathname===window.location.pathname&&u.search===window.location.search)return;
+  e.preventDefault();
+  window.location.assign(u.toString());
 },false);
+// Forms lose the marker on submit: GET rebuilds the query from fields (so _clp
+// must ride as a hidden input), POST keeps it only if it is in the action URL.
+document.addEventListener('submit',function(e){
+  var f=e.target;
+  if(!f||f.tagName!=='FORM')return;
+  var u=_clpRewrite(f.getAttribute('action')||window.location.href);
+  if(!u)return;
+  if((f.method||'get').toLowerCase()==='get'){
+    if(!f.querySelector('input[name="_clp"]')){
+      var i=document.createElement('input');i.type='hidden';i.name='_clp';i.value='1';f.appendChild(i);
+    }
+  }else{
+    f.setAttribute('action',u.toString());
+  }
+},true);
 })();</script>
 HTML;
     }

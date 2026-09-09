@@ -29,11 +29,12 @@ packages/contao-live-preview-bundle/
 │   │   └── InjectModuleMarkersListener.php     # getFrontendModule hook — layout modules (Header, Nav, Footer, …)
 │   ├── Resources/
 │   │   └── config/
-│   │       └── services.yaml                   # Autowired services + interface alias
+│   │       └── services.yaml                   # Autowired services + resolver-chain tag/alias
 │   └── Service/
 │       ├── LabelCleanerTrait.php               # Shared cleanLabel() + resolveLabel() for CE listeners + controller
-│       ├── PreviewUrlResolverInterface.php     # Extension point for third-party bundles
-│       └── PreviewUrlResolver.php              # DBAL parent-chain resolver (+ generic DCA ptable walk for custom child tables)
+│       ├── PreviewUrlResolverInterface.php     # Extension point for third-party bundles (tagged into the chain)
+│       ├── ChainPreviewUrlResolver.php         # Runs all tagged resolvers by priority, first non-null wins
+│       └── PreviewUrlResolver.php              # DBAL parent-chain resolver (+ generic DCA ptable walk); chain fallback
 └── templates/
     └── backend/
         └── live_preview_sidebar.html.twig      # Sidebar HTML (data-turbo-permanent)
@@ -51,10 +52,15 @@ packages/contao-live-preview-bundle/
 | `InjectContentElementMarkersListener` | `EventListener\InjectContentElementMarkersListener` | `RequestStack`, `ContaoFramework` |
 | `InjectTwigContentElementMarkersListener` | `EventListener\InjectTwigContentElementMarkersListener` | `RequestStack`, `ContaoFramework`, `Connection` |
 | `InjectModuleMarkersListener` | `EventListener\InjectModuleMarkersListener` | `RequestStack`, `ContaoFramework` |
-| `PreviewResolverController` | `Controller\PreviewResolverController` | `PreviewUrlResolverInterface`, `ContaoFramework` |
+| `PreviewResolverController` | `Controller\PreviewResolverController` | `PreviewUrlResolverInterface` (→ `ChainPreviewUrlResolver`), `ContaoFramework` |
+| `ChainPreviewUrlResolver` | `Service\ChainPreviewUrlResolver` | `!tagged_iterator contao_live_preview.preview_url_resolver`, `PreviewUrlResolver` |
 | `PreviewUrlResolver` | `Service\PreviewUrlResolver` | `Doctrine\DBAL\Connection`, `ContaoFramework` |
 
-All services are autowired and autoconfigured via the `Vendor\ContaoLivePreviewBundle\` resource scan. `PreviewUrlResolverInterface` is explicitly aliased to `PreviewUrlResolver` in `services.yaml` so third-party bundles can override it. Most custom child tables need no override at all — `PreviewUrlResolver::resolveFromChildTable()` walks the DCA `ptable` chain (`config.ptable`, or the record's `ptable` column when `config.dynamicPtable` is set) up to `tl_content` / `tl_article` / `tl_page` automatically (ADR-021).
+All services are autowired and autoconfigured via the `Vendor\ContaoLivePreviewBundle\` resource scan.
+
+**Resolver chain (ADR-021):** `PreviewUrlResolverInterface` is aliased to `ChainPreviewUrlResolver`, which runs every service tagged `contao_live_preview.preview_url_resolver` in priority order and returns the first non-null result. `PreviewUrlResolver` (the bundle's own) is pinned to priority `-1000` so it runs last. A third-party bundle adds a table (or overrides an existing one) by implementing `PreviewUrlResolverInterface` — autoconfiguration tags it; `#[AsTaggedItem(priority: N)]` sets its order. Re-aliasing the interface to a single custom service still works as the full-control escape hatch.
+
+Most custom child tables need no resolver at all — `PreviewUrlResolver::resolveFromChildTable()` walks the DCA `ptable` chain (`config.ptable`, or the record's `ptable` column when `config.dynamicPtable` is set) up to `tl_content` / `tl_article` / `tl_page` automatically.
 
 ---
 
