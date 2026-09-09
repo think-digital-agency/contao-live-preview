@@ -3,6 +3,11 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [3.0.2] - 2026-09-09
+
+### Fixed
+- Element / module / article wrappers no longer lose their own `data-contao-*` markers when the rendered buffer contains a nested `data-contao-table` somewhere inside (an embedded marked element, or — for articles — any already-marked content element). The already-marked guard in `InjectContentElementMarkersListener`, `InjectModuleMarkersListener` and `InjectArticleMarkersListener` now checks only the wrapper's opening tag, matching `InjectTwigContentElementMarkersListener`. The article guard in particular was previously tripped on every non-empty article. (#10)
+
 ## [3.0.1] - 2026-09-06
 
 ### Fixed

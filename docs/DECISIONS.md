@@ -155,7 +155,7 @@ Add two Contao hook listeners that auto-inject `data-contao-*` attributes when t
 - `parseFrontendTemplate` hook (`InjectArticleMarkersListener`): fires in `Module::generate()` after template render, including Twig-rendered articles. Extracts the numeric ID from Contao's default `id="article-{N}"` attribute. Falls back gracefully when `noMarkup` or a custom CSS ID is set (JS fallback selectors still handle highlight).
 - `getContentElement` hook (`InjectContentElementMarkersListener`): fires for legacy `ContentElement` subclasses and RSCE. Injects `data-contao-table`, `data-contao-id`, and `data-contao-label`. Twig-first `#[AsContentElement]` CEs bypass the hook (documented limitation).
 
-Both listeners check `str_contains($buffer, 'data-contao-table=')` before injecting, so themes that already provide the attributes (Design+) are never double-injected.
+Both listeners skip injection when the wrapper's **opening tag** already carries `data-contao-table=`, so themes that already provide the attributes (Design+) are never double-injected. The check is scoped to the opening tag (not the whole buffer) — a nested `data-contao-table=` deeper in the element markup must not suppress the wrapper's own markers (issue #10).
 
 **Consequences:**
 - (+) Bundle works out of the box with any Contao theme

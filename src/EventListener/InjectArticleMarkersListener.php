@@ -13,7 +13,7 @@ use Symfony\Component\HttpFoundation\RequestStack;
  *
  * This makes the partial DOM-swap (clp:refresh) work in any Contao theme without
  * requiring theme-level changes. Themes that already emit these attributes (e.g.
- * Design+) are skipped via the str_contains guard.
+ * Design+) are skipped by checking the article wrapper's opening tag.
  *
  * The parseFrontendTemplate hook fires in Module::generate() after rendering,
  * including Twig-rendered articles in Contao 5.
@@ -36,8 +36,14 @@ class InjectArticleMarkersListener
             return $buffer;
         }
 
-        // Theme already provides the attributes (e.g. Design+) — skip.
-        if (str_contains($buffer, 'data-contao-table=')) {
+        // Theme already provides the attributes on the article wrapper (e.g.
+        // Design+) — skip. Check only the opening tag: the buffer almost always
+        // also contains already-marked content elements from the getContentElement
+        // hook, so a whole-buffer scan would suppress the article markers on
+        // every non-empty article (#10).
+        if (preg_match('/<[a-z][a-z0-9]*\b[^>]*>/i', $buffer, $openingTag)
+            && str_contains($openingTag[0], 'data-contao-table=')
+        ) {
             return $buffer;
         }
 
