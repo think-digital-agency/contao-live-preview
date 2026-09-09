@@ -243,6 +243,11 @@
                     refreshedTimeoutId = null;
                     return;
                 }
+                // Canonical backend entry point — set server-side from the
+                // contao_backend route. NOT window.location.pathname, which may
+                // be a sub-route like /contao/template-studio and would 404.
+                const beUrl = (sidebar && sidebar.dataset.clpBackendUrl) || '/contao';
+
                 if (e.data?.type === 'clp:edit') {
                     const { table, id } = e.data;
                     if (!table || !id) return;
@@ -264,7 +269,7 @@
                             table, act: 'edit', id: String(id),
                         });
                     }
-                    const url = window.location.pathname + '?' + params.toString();
+                    const url = beUrl + '?' + params.toString();
                     if (window.Turbo) { Turbo.visit(url); } else { window.location.href = url; }
                 }
                 if (e.data?.type === 'clp:duplicate') {
@@ -273,7 +278,7 @@
                     const rt   = window.Contao?.request_token || window.Contao?.requestToken || '';
                     const doV  = new URLSearchParams(window.location.search).get('do') || 'article';
                     const params = new URLSearchParams({ do: doV, table: 'tl_content', act: 'copy', mode: '4', id: String(id), rt });
-                    const url  = window.location.pathname + '?' + params.toString();
+                    const url  = beUrl + '?' + params.toString();
                     if (window.Turbo) { Turbo.visit(url); } else { window.location.href = url; }
                 }
                 if (e.data?.type === 'clp:insert-after') {
@@ -282,7 +287,7 @@
                     const rt   = window.Contao?.request_token || window.Contao?.requestToken || '';
                     const doV  = new URLSearchParams(window.location.search).get('do') || 'article';
                     const params = new URLSearchParams({ do: doV, table: 'tl_content', act: 'create', mode: '4', pid: String(id), rt });
-                    const url  = window.location.pathname + '?' + params.toString();
+                    const url  = beUrl + '?' + params.toString();
                     if (window.Turbo) { Turbo.visit(url); } else { window.location.href = url; }
                 }
             });

@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [3.0.5] - 2026-09-09
+
+### Fixed
+- Badge "edit" / "duplicate" / "insert after" now navigate to the canonical backend entry point (the `contao_backend` route, injected server-side) instead of `window.location.pathname`. Triggering an action while on a backend sub-route (e.g. `/contao/template-studio`) previously built a URL like `/contao/template-studio?do=…` and hit the "Page Not Found" fallback.
+- File manager and other tree views (`.tree-view`): the filter panel (`.tl_panel` / `.content-filter`) now slides out to the right under the sidebar when the preview is open, same as the edit-all view — previously it stayed a fixed column and squeezed the tree.
+
 ## [3.0.4] - 2026-09-09
 
 ### Fixed

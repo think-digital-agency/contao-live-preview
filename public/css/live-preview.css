@@ -42,13 +42,19 @@
         overflow-x: clip;
     }
 
-    /* Edit-all view (.tl_show_all): expand content column to full width so
-       the filter panel slides out to the right under the preview sidebar.
-       Transition only fires on button click (clp-animate), not on page restore. */
-    body.clp-open .tl_show_all {
+    /* Views with a right-hand filter panel (.content-filter / .tl_panel):
+       .tl_show_all (edit-all) and .tree-view (file manager, page tree, list
+       views). Expand the content column to full width so the panel slides out
+       to the right under the preview sidebar (clipped by body overflow-x:clip).
+       Sizing via grid-template-columns works for both the plain 2-column grid
+       and the grid-template-areas variant Contao uses when a top .operations /
+       #picker-menu row is present. Transition only on button click (clp-animate). */
+    body.clp-open .tl_show_all,
+    body.clp-open .tree-view {
         grid-template-columns: 100% var(--filter-width, 240px) !important;
     }
-    body.clp-animate .tl_show_all {
+    body.clp-animate .tl_show_all,
+    body.clp-animate .tree-view {
         transition: grid-template-columns 0.28s cubic-bezier(0.4, 0, 0.2, 1);
     }
 
