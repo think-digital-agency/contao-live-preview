@@ -30,6 +30,9 @@
  *   ?do=article&id=X                            → id = article
  *   ?do=page&id=X                               → id = page
  *   ?do=themes&table=tl_module&act=edit&id=X    → id = frontend module
+ *   ?do=<any>&table=tl_<custom>&act=edit&id=X   → id = record in a custom child
+ *                                                table; server resolver walks its
+ *                                                DCA ptable chain to the page
  */
 
 (function () {
@@ -235,7 +238,17 @@
                         params = new URLSearchParams({ do: 'article', table: 'tl_content', id: String(id) });
                     } else if (table === 'tl_module') {
                         params = new URLSearchParams({ do: 'themes', table: 'tl_module', act: 'edit', id: String(id) });
-                    } else return;
+                    } else {
+                        // Any other (custom child) table: reuse the current backend
+                        // module, falling back to a table-derived guess. Standard
+                        // Contao edit-URL shape — the server-side resolver already
+                        // handled the preview side via the DCA ptable walk.
+                        const doV = new URLSearchParams(window.location.search).get('do') || '';
+                        params = new URLSearchParams({
+                            do: doV || table.replace(/^tl_/, ''),
+                            table, act: 'edit', id: String(id),
+                        });
+                    }
                     const url = window.location.pathname + '?' + params.toString();
                     if (window.Turbo) { Turbo.visit(url); } else { window.location.href = url; }
                 }
@@ -359,6 +372,17 @@
 
         if (tbl === 'tl_content' && act === 'edit') {
             return { table: 'tl_content', id };
+        }
+
+        // Explicit edit of any other table (custom child tables of a bundle's
+        // own DCA, nested under an article / page / content element). Pass the
+        // real table through — the server-side resolver walks its DCA ptable
+        // chain. Never fall through to the `do=article` catch-all below, which
+        // would coerce this to { table: 'tl_article', id } and jump the preview
+        // to a same-id article on a possibly different page or domain (#9).
+        if (tbl && act === 'edit' && id > 0
+            && tbl !== 'tl_article' && tbl !== 'tl_module' && tbl !== 'tl_layout') {
+            return { table: tbl, id };
         }
 
         if (doV === 'article' && tbl === 'tl_content' && !act) {
