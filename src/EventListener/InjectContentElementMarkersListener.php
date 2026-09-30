@@ -56,7 +56,7 @@ class InjectContentElementMarkersListener
 
         return preg_replace(
             '/(<[a-z][a-z0-9]*\b)/i',
-            '$1 data-contao-table="tl_content" data-contao-id="' . $id . '" data-contao-label="' . htmlspecialchars($label, \ENT_QUOTES | \ENT_SUBSTITUTE, 'UTF-8') . '"',
+            '$1 data-contao-table="tl_content" data-contao-id="' . $id . '" data-contao-type="' . $element->type . '" data-contao-label="' . htmlspecialchars($label, \ENT_QUOTES | \ENT_SUBSTITUTE, 'UTF-8') . '"',
             $buffer,
             1,
         ) ?? $buffer;

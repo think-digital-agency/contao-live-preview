@@ -7,11 +7,13 @@ namespace ThinkDigital\ContaoLivePreview\Controller;
 use Contao\CoreBundle\Framework\ContaoFramework;
 use Contao\PageModel;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
+use Symfony\Component\EventDispatcher\EventDispatcherInterface;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\Security\Http\Attribute\IsGranted;
 use ThinkDigital\ContaoLivePreview\Service\LabelCleanerTrait;
 use ThinkDigital\ContaoLivePreview\Service\PreviewUrlResolverInterface;
+use ThinkDigital\ContaoLivePreview\Service\ResolvePreviewEvent;
 
 // Route is defined in config/routes.yaml and loaded via ContaoManager\Plugin (RoutingPluginInterface).
 // The #[Route] attribute is intentionally absent — Symfony does not auto-scan bundle controllers.
@@ -24,6 +26,7 @@ class PreviewResolverController extends AbstractController
         private readonly PreviewUrlResolverInterface $resolver,
         private readonly ContaoFramework $framework,
         private readonly \Symfony\Contracts\Translation\TranslatorInterface $translator,
+        private readonly EventDispatcherInterface $eventDispatcher,
     ) {
     }
 
@@ -66,7 +69,13 @@ class PreviewResolverController extends AbstractController
             ]);
         }
 
-        $pageData = $this->resolver->resolve($table, $id);
+        // clp:resolve event — escape hatch for dynamic resolution that depends
+        // on request state. A listener that calls setPageData() takes
+        // precedence over the resolver chain. See docs/EXTENDING.md.
+        $event = new ResolvePreviewEvent($table, $id);
+        $this->eventDispatcher->dispatch($event, ResolvePreviewEvent::NAME);
+
+        $pageData = $event->isResolved() ? $event->getPageData() : $this->resolver->resolve($table, $id);
 
         if (null === $pageData) {
             return $this->json(['error' => 'Page not found'], 404);
@@ -82,6 +91,16 @@ class PreviewResolverController extends AbstractController
         $contentElementLabel = '' !== $contentElementType
             ? $this->resolveLabel($contentElementType, $this->translator)
             : '';
+        $newsId    = $pageData['newsId']  ?? null;
+        $newsAlias  = (string) ($pageData['newsAlias']  ?? '');
+        $newsTitle  = (string) ($pageData['newsTitle']  ?? '');
+
+        // When a content element belongs to a news record (ptable='tl_news'),
+        // the edit URL must use do=news instead of do=article.
+        $contentElementParentTable = '';
+        if (\is_int($contentElementId) && $contentElementId > 0 && \is_int($newsId) && $newsId > 0 && null === $articleId) {
+            $contentElementParentTable = 'tl_news';
+        }
 
         // Article-level selectors — used for DOM swap (clp:refresh) and as secondary
         // highlight target (outline + badge). Ordered by specificity.
@@ -98,12 +117,17 @@ class PreviewResolverController extends AbstractController
         }
 
         // Primary highlight selectors — CE selector when context is tl_content,
-        // otherwise same as articleSelectors. JS scrolls to the primary target.
-        // When CE + article differ, the frontend highlights both simultaneously:
-        // CE gets the solid blue outline, article gets dashed blue + badge.
-        $highlightSelectors = \is_int($contentElementId) && $contentElementId > 0
-            ? ['[data-contao-table="tl_content"][data-contao-id="' . $contentElementId . '"]']
-            : $articleSelectors;
+        // news selector when context is tl_news, otherwise same as articleSelectors.
+        // JS scrolls to the primary target. When CE + article differ, the frontend
+        // highlights both simultaneously: CE gets the solid blue outline, article
+        // gets dashed blue + badge.
+        if (\is_int($contentElementId) && $contentElementId > 0) {
+            $highlightSelectors = ['[data-contao-table="tl_content"][data-contao-id="' . $contentElementId . '"]'];
+        } elseif (\is_int($newsId) && $newsId > 0) {
+            $highlightSelectors = ['[data-contao-table="tl_news"][data-contao-id="' . $newsId . '"]'];
+        } else {
+            $highlightSelectors = $articleSelectors;
+        }
 
         return $this->json([
             'pageId'             => $pageData['pageId'],
@@ -113,6 +137,10 @@ class PreviewResolverController extends AbstractController
             'contentElementId'    => $contentElementId,
             'contentElementType'  => $contentElementType,
             'contentElementLabel' => $contentElementLabel,
+            'newsId'             => $newsId,
+            'newsAlias'          => $newsAlias,
+            'newsTitle'          => $newsTitle,
+            'contentElementParentTable' => $contentElementParentTable,
             'previewUrl'          => $previewUrl,
             'highlightSelectors' => $highlightSelectors,
             'articleSelectors'   => $articleSelectors,
@@ -124,6 +152,7 @@ class PreviewResolverController extends AbstractController
         return match ($do) {
             'page'    => 'tl_page',
             'article' => 'tl_article',
+            'news'    => 'tl_news',
             default   => '',
         };
     }
