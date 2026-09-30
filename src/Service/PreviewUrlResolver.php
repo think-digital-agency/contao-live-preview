@@ -28,10 +28,12 @@ class PreviewUrlResolver implements PreviewUrlResolverInterface
     public function resolve(string $table, int $id): ?array
     {
         return match ($table) {
-            'tl_content' => $this->resolveFromContent($id),
-            'tl_article' => $this->resolveFromArticle($id),
-            'tl_page'    => $this->resolveFromPage($id),
-            default      => $this->resolveFromChildTable($table, $id, 0),
+            'tl_content'         => $this->resolveFromContent($id),
+            'tl_article'         => $this->resolveFromArticle($id),
+            'tl_news'            => $this->resolveFromNews($id),
+            'tl_news_archive'    => $this->resolveFromNewsArchive($id),
+            'tl_page'            => $this->resolveFromPage($id),
+            default              => $this->resolveFromChildTable($table, $id, 0),
         };
     }
 
@@ -145,7 +147,8 @@ class PreviewUrlResolver implements PreviewUrlResolverInterface
         }
 
         // Walk up through nested element groups (ptable='tl_content') until we
-        // reach the owning article. Safety cap of 10 prevents infinite loops.
+        // reach the owning article or news record. Safety cap of 10 prevents
+        // infinite loops.
         $effectivePid = (int) $row['pid'];
         $ptable       = (string) ($row['ptable'] ?: 'tl_article');
         $depth        = 0;
@@ -164,11 +167,15 @@ class PreviewUrlResolver implements PreviewUrlResolverInterface
             $ptable       = (string) ($parent['ptable'] ?: 'tl_article');
         }
 
-        if ('tl_article' !== $ptable) {
+        // Content elements can belong to a tl_article (normal article CE list)
+        // or to a tl_news record (news article content elements).
+        if ('tl_article' === $ptable) {
+            $result = $this->resolveFromArticle($effectivePid);
+        } elseif ('tl_news' === $ptable) {
+            $result = $this->resolveFromNews($effectivePid);
+        } else {
             return null;
         }
-
-        $result = $this->resolveFromArticle($effectivePid);
 
         if (null !== $result) {
             $result['contentElementId']   = $id;
@@ -201,6 +208,30 @@ class PreviewUrlResolver implements PreviewUrlResolverInterface
             $result['articleCssId'] = \is_array($cssIdData) && '' !== ($cssIdData[0] ?? '')
                 ? (string) $cssIdData[0]
                 : '';
+        }
+
+        return $result;
+    }
+
+    private function resolveFromNews(int $id): ?array
+    {
+        $row = $this->connection->fetchAssociative(
+            'SELECT pid, alias, headline FROM tl_news WHERE id = ?',
+            [$id],
+        );
+
+        if (!$row) {
+            return null;
+        }
+
+        $archiveId = (int) $row['pid'];
+
+        $result = $this->resolveFromNewsArchive($archiveId);
+
+        if (null !== $result) {
+            $result['newsId']    = $id;
+            $result['newsAlias'] = (string) ($row['alias'] ?? '');
+            $result['newsTitle'] = (string) ($row['headline'] ?? '');
         }
 
         return $result;
@@ -252,6 +283,35 @@ class PreviewUrlResolver implements PreviewUrlResolverInterface
             'articleCssId'      => '',   // overwritten by resolveFromArticle
             'contentElementId'   => null, // overwritten by resolveFromContent
             'contentElementType' => null, // overwritten by resolveFromContent
+            'newsId'             => null, // overwritten by resolveFromNews
+            'newsAlias'          => '',   // overwritten by resolveFromNews
+            'newsTitle'          => '',   // overwritten by resolveFromNews
         ];
+    }
+
+    private function resolveFromNewsArchive(int $id): ?array
+    {
+        // Resolve the news archive's jumpTo page.
+        $row = $this->connection->fetchAssociative(
+            'SELECT jumpTo FROM tl_news_archive WHERE id = ?',
+            [$id],
+        );
+
+        if (!$row) {
+            return null;
+        }
+
+        $jumpTo = (int) $row['jumpTo'];
+        if ($jumpTo <= 0) {
+            return null;
+        }
+
+        $result = $this->resolveFromPage($jumpTo);
+
+        if (null !== $result) {
+            $result['newsArchiveId'] = $id;
+        }
+
+        return $result;
     }
 }

@@ -18,22 +18,33 @@ use ThinkDigital\ContaoLivePreview\Service\LabelCleanerTrait;
  * data-contao-label="{Human label}" into Twig-first content element wrappers.
  *
  * Twig-first CEs registered via #[AsContentElement] bypass the getContentElement
- * hook entirely — InjectContentElementMarkersListener cannot reach them. This
- * listener runs after the full page is rendered (KernelEvents::RESPONSE) and
- * annotates CE wrappers by matching Contao's standard ce_{type} CSS class against
- * DBAL records for the current page, ordered by article + content sorting.
+ * hook entirely — InjectContentElementMarkersListener cannot reach them. Also,
+ * Container CEs (Card, Accordion, Elementgruppe, …) that wrap nested fragments
+ * are not annotated by InjectContentElementMarkersListener because the hook
+ * fires for the parent CE after its children have already been rendered, so the
+ * parent buffer already contains data-contao-table= markers from the children
+ * and the hook skips it (str_contains check). This listener runs after the full
+ * page is rendered (KernelEvents::RESPONSE) and annotates such CE wrappers by
+ * matching Contao's CSS class conventions against DBAL records for the current
+ * page, ordered by article + content sorting.
  *
  * Matching strategy:
  *   1. cssId set on CE → exact match via id="cssId" attribute (reliable)
- *   2. No cssId → Nth occurrence of ce_{type} class in the HTML matches the Nth
- *      CE of that type in DB order (type+position matching)
+ *   2. No cssId → Nth occurrence of the CE type class in the HTML matches the Nth
+ *      CE of that type in DB order (type+position matching). Both legacy
+ *      ce_{type} (underscores) and modern content-{type} (hyphens) class
+ *      conventions are matched.
  *
- * Known limitations (documented in CLAUDE.md):
+ * Nested content elements (those within containers using nestedFragments such as
+ * Card, Accordion, Tabs, or element_group) are now loaded recursively and included
+ * in the position-based matching. Both the parent and its children are flattened in
+ * depth-first-search order (parent before children, children sorted by sorting
+ * field), matching the HTML rendering order produced by
+ * {% for fragment in nested_fragments %}{{ content_element(fragment) }}{% endfor %}.
+ *
+ * Known limitation:
  *   - Multi-column layouts where side-column HTML precedes main-column HTML may
  *     misalign the type+position matching. cssId-matched CEs are always correct.
- *   - Nested CEs (e.g. accordion content) appear as additional occurrences of
- *     ce_{type} and shift the position counter. Inject guards (already-marked
- *     check) prevent double-injection but may misalign remaining counters.
  */
 #[AsEventListener(event: KernelEvents::RESPONSE, priority: -195)]
 class InjectTwigContentElementMarkersListener
@@ -102,6 +113,7 @@ class InjectTwigContentElementMarkersListener
      */
     private function loadContentElements(int $pageId): array
     {
+        // Load top-level elements (direct children of articles on this page).
         $rawRows = $this->connection->fetchAllAssociative(
             'SELECT c.id, c.type, c.cssID
              FROM tl_content c
@@ -111,17 +123,74 @@ class InjectTwigContentElementMarkersListener
             ['pageId' => $pageId, 'one' => '1'],
         );
 
+        if ([] === $rawRows) {
+            return [];
+        }
+
+        $topLevelIds = array_map(fn(array $row): int => (int) $row['id'], $rawRows);
+
+        // Build a parent → children map for all nesting levels.
+        // Nested content elements (inside a Card, Accordion, etc.) have
+        // ptable = 'tl_content' and are NOT fetched by the top-level query.
+        // We load them iteratively (up to 10 levels deep) and record their
+        // parent-child relationship so we can later flatten them in the
+        // same DFS order as the HTML rendering.
+        $parentChildrenMap = [];
+        $currentParentIds = $topLevelIds;
+        $maxDepth = 10;
+
+        while ($maxDepth-- > 0) {
+            $nested = $this->connection->fetchAllAssociative(
+                'SELECT id, type, cssID, pid
+                 FROM tl_content
+                 WHERE pid IN (?) AND ptable = \'tl_content\' AND invisible != 1
+                 ORDER BY sorting ASC',
+                [$currentParentIds],
+                [\Doctrine\DBAL\ArrayParameterType::INTEGER],
+            );
+
+            if ([] === $nested) {
+                break;
+            }
+
+            $currentParentIds = [];
+            foreach ($nested as $row) {
+                $pid = (int) $row['pid'];
+                $parentChildrenMap[$pid][] = [
+                    'id'    => (int) $row['id'],
+                    'type'  => (string) $row['type'],
+                    'cssID' => (string) ($row['cssID'] ?? ''),
+                ];
+                $currentParentIds[] = (int) $row['id'];
+            }
+        }
+
+        // Flatten in DFS order (parent, then children by sorting).
+        // This matches the actual HTML rendering order produced by
+        // {% for fragment in nested_fragments %}{{ content_element(fragment) }}{% endfor %}.
         $result = [];
         foreach ($rawRows as $row) {
-            $cssIdData = @unserialize((string) ($row['cssID'] ?? ''));
-            $result[] = [
-                'id'    => (int) $row['id'],
-                'type'  => (string) $row['type'],
-                'cssId' => \is_array($cssIdData) && '' !== ($cssIdData[0] ?? '') ? (string) $cssIdData[0] : '',
-            ];
+            $this->collectElement($row, $parentChildrenMap, $result);
         }
 
         return $result;
+    }
+
+    private function collectElement(array $row, array &$parentChildrenMap, array &$result): void
+    {
+        $id = (int) $row['id'];
+        $cssIdData = @unserialize((string) ($row['cssID'] ?? ''));
+        $result[] = [
+            'id'    => $id,
+            'type'  => (string) $row['type'],
+            'cssId' => \is_array($cssIdData) && '' !== ($cssIdData[0] ?? '') ? (string) $cssIdData[0] : '',
+        ];
+
+        if (isset($parentChildrenMap[$id])) {
+            foreach ($parentChildrenMap[$id] as $childRow) {
+                $this->collectElement($childRow, $parentChildrenMap, $result);
+            }
+        }
     }
 
     /**
@@ -130,7 +199,9 @@ class InjectTwigContentElementMarkersListener
     private function annotate(string $content, array $rows): string
     {
         // --- Pass 1: find all CE wrapper opening-tags in the HTML ---
-        // Matches any opening tag that has a class attribute containing ce_{type}.
+        // Matches any opening tag that has a class attribute containing either
+        // the legacy ce_{type} (underscores) or the modern content-{type}
+        // (hyphens) class convention used by Contao 5.x Twig CEs.
         // The full match includes from < to > (inclusive) so we can check for
         // data-contao-table= within the same tag and get the byte offset.
         $pattern = '/(<[a-z][a-z0-9]*\b[^>]*\bclass="[^"]*\b(?:ce_|content-)[a-z][a-z0-9_-]*\b[^"]*"[^>]*>)/i';
@@ -150,11 +221,13 @@ class InjectTwigContentElementMarkersListener
                 continue;
             }
 
+            // Extract the type from either ce_{type} or content-{type} class.
             if (!preg_match('/\b(?:ce_|content-)([a-z][a-z0-9_]*)\b/i', $fullTag, $typeMatch)) {
                 continue;
             }
 
-            $type = $typeMatch[1];
+            // Convert type extracted from CSS selector (kebab-case) to match DBAL record (snake-case).
+            $type = str_replace('-', '_', $typeMatch[1]);
             $typeOccurrences[$type][] = [
                 'offset'  => $offset,
                 'length'  => \strlen($fullTag),
