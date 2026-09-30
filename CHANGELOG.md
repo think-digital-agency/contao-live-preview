@@ -3,6 +3,20 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [3.1.0] - 2026-09-30
+
+### Added
+- **Extensibility API**: `window.CLP_BE` (backend) and `window.CLP_FE` (iframe) registries let third-party JS add/replace/remove badge actions and message handlers without patching this bundle — `.on()`/`.off()`/`.dispatch()` for messages, `.augment()`/`.unaugment()` for outgoing payloads (`CLP_BE`), `.set()`/`.remove()`/`.move()`/`.each()` for badge actions (`CLP_FE`). New `ResolvePreviewEvent` (`clp:resolve`) lets PHP listeners resolve a preview URL dynamically, ahead of the resolver chain. New `injectLivePreview` / `injectPreviewScript` hooks for injecting custom scripts. Versioned `postMessage` protocol documented in `docs/PROTOCOL.md`; extension guide in `docs/EXTENDING.md`.
+- **Grid / box-model overlay**: a toggle button in the sidebar shows margin/border/padding/content guide lines (DevTools-style) for the hovered element in the preview iframe. State persists across reloads via `localStorage`.
+- **News post preview**: content elements, teasers and archive views for `tl_news` now resolve to the correct frontend page and highlight/hover like articles — edit, duplicate and insert-after badges route to the `do=news` backend views.
+- **Element group duplicate / insert-after fix**: these actions now use Contao's `mode=1` (paste-after) + `&ptable=tl_content` for content elements nested in an element group, instead of `mode=4`, which Contao rejects as "not creatable" for group children.
+- Nested content-element marker detection (`InjectTwigContentElementMarkersListener`) now walks up to 10 levels deep, so element groups nested inside element groups are marked and highlighted correctly.
+
+### Fixed
+- Preview badge outline is no longer clipped by an `overflow: hidden` ancestor — outline is now drawn on a `::before` pseudo-element instead of the element's own `outline` property.
+- Hovering an element whose badge would overlap the currently-selected element's badge now offsets automatically instead of rendering on top of it.
+- Highlighting a top-level `tl_news` record (previewing a news post directly, not a content element inside one) now shows a working edit badge — it previously fell through to the generic single-highlight path, which rendered a badge with no click handler.
+
 ## [3.0.5] - 2026-09-09
 
 ### Fixed
