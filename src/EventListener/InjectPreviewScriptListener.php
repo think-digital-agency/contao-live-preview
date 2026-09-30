@@ -70,10 +70,10 @@ class InjectPreviewScriptListener
         //   clp:refresh   — fetch current page, swap article DOM node, then highlight
         $html = <<<'HTML'
 <style>
-.clp-sel,.clp-sel-secondary,.clp-hover{position:relative}
+.clp-pos-fix{position:relative}
 .clp-sel::before{content:'';display:block;position:absolute;top:0;left:0;width:100%;height:100%;outline:2px solid #0594ff!important;outline-offset:-2px;z-index:2147483647;pointer-events:none}
 .clp-sel-secondary::before{content:'';display:block;position:absolute;top:0;left:0;width:100%;height:100%;outline:2px dashed #0594ff!important;outline-offset:-2px;z-index:2147483647;pointer-events:none}
-.clp-hover::before{content:'';display:block;position:absolute;top:0;left:0;width:100%;height:100%;outline:2px dashed #d946ef!important;outline-offset:-4px;z-index:2147483647;pointer-events:none}
+.clp-hover::before{content:'';display:block;position:absolute;top:0;left:0;width:100%;height:100%;outline:2px dashed #d946ef!important;outline-offset:-2px;z-index:2147483647;pointer-events:none}
 .clp-badge,.clp-hover-badge{position:absolute;display:flex;align-items:center;gap:5px;color:#fff;font:700 11px/1 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;padding:7px 9px 8px 10px;border-radius:3px;white-space:nowrap;transition:top .15s}
 .clp-badge{background:#0594ff;z-index:2147483647}
 .clp-hover-badge{background:#d946ef;z-index:2147483647}
@@ -252,8 +252,16 @@ function findEl(sels){var r=null;for(var i=0;i<sels.length;i++){r=document.query
 // When el is a single-child grid column wrapper (col-*), return the child as the visual target.
 // The data element (el) is kept for DOM queries; only the outline and badge move to the child.
 function clpVisTarget(el){var cc=String(el.className||'').split(/\s+/);for(var i=0;i<cc.length;i++){if(cc[i].indexOf('col-')===0){if(el.children.length===1)return el.children[0];break;}}return el;}
-function clpClear(){if(_elVis){_elVis.classList.remove('clp-sel','clp-sel-secondary');_elVis=null;}_el=null;if(_elCeVis){_elCeVis.classList.remove('clp-sel');_elCeVis=null;}_elCe=null;if(_badge){_badge.remove();_badge=null;}if(_badgeCe){_badgeCe.remove();_badgeCe=null;}}
-function clpHoverClear(){if(_hoverElVis){_hoverElVis.classList.remove('clp-hover');_hoverElVis=null;}_hoverEl=null;if(_hoverBadge){_hoverBadge.remove();_hoverBadge=null;}}
+// The ::before outline overlay is positioned absolute against its parent, which
+// needs any non-static position to act as its containing block. Forcing
+// position:relative unconditionally would override position:fixed (headers,
+// offbars, …), pulling them out of their fixed stacking context and into the
+// document flow — causing the element to jump under the cursor on hover. Only
+// elements that are actually position:static (the common case) need the fix.
+function clpVisClassAdd(el,cls){el.classList.add(cls);if(getComputedStyle(el).position==='static')el.classList.add('clp-pos-fix');}
+function clpVisClassRemove(el,cls){el.classList.remove(cls);if(!el.classList.contains('clp-sel')&&!el.classList.contains('clp-sel-secondary')&&!el.classList.contains('clp-hover'))el.classList.remove('clp-pos-fix');}
+function clpClear(){if(_elVis){clpVisClassRemove(_elVis,'clp-sel');clpVisClassRemove(_elVis,'clp-sel-secondary');_elVis=null;}_el=null;if(_elCeVis){clpVisClassRemove(_elCeVis,'clp-sel');_elCeVis=null;}_elCe=null;if(_badge){_badge.remove();_badge=null;}if(_badgeCe){_badgeCe.remove();_badgeCe=null;}}
+function clpHoverClear(){if(_hoverElVis){clpVisClassRemove(_hoverElVis,'clp-hover');_hoverElVis=null;}_hoverEl=null;if(_hoverBadge){_hoverBadge.remove();_hoverBadge=null;}}
 function clpIsFixed(el){var n=el;while(n&&n!==document.body){if(getComputedStyle(n).position==='fixed')return true;n=n.parentElement;}return false;}
 // Position a badge at the top-left of its target. When the target box is too
 // short to contain the badge (empty article / element group with little padding),
@@ -411,7 +419,7 @@ function highlight(el,bh,label,table,editId){
   var rect=vis.getBoundingClientRect();
   var targetY=window.scrollY+rect.top-(window.innerHeight-rect.height)/2;
   window.scrollTo({top:Math.max(0,targetY),left:0,behavior:bh||'smooth'});
-  function apply(){if(_gen!==myGen)return;_el=el;_elVis=vis;vis.classList.add('clp-sel');if(label){_badge=makeBadge(label,table,editId,getCeParentTable(el),el);clpBadgePos(_badge,vis);}}
+  function apply(){if(_gen!==myGen)return;_el=el;_elVis=vis;clpVisClassAdd(vis,'clp-sel');if(label){_badge=makeBadge(label,table,editId,getCeParentTable(el),el);clpBadgePos(_badge,vis);}}
   if((bh||'smooth')==='instant'){apply();}
   else{var t;function hl(){clearTimeout(t);window.removeEventListener('scrollend',hl);apply();}if('onscrollend'in window)window.addEventListener('scrollend',hl,{once:true});t=setTimeout(hl,800);}
 }
@@ -444,8 +452,8 @@ CLP_FE.on('clp:highlight',function(d){
     clpClear();_gen++;
     var rect=elVis.getBoundingClientRect();
     window.scrollTo({top:Math.max(0,window.scrollY+rect.top-(window.innerHeight-rect.height)/2),left:0,behavior:d.scrollBehavior||'instant'});
-    _elCe=el;_elCeVis=elVis;elVis.classList.add('clp-sel');
-    _el=aEl;_elVis=aElVis;aElVis.classList.add('clp-sel-secondary');
+    _elCe=el;_elCeVis=elVis;clpVisClassAdd(elVis,'clp-sel');
+    _el=aEl;_elVis=aElVis;clpVisClassAdd(aElVis,'clp-sel-secondary');
     // Prefer data-contao-label from the DOM — set by InjectContentElementMarkersListener
     // in fully-bootstrapped frontend context, so language files are always complete.
     var lbl=getCeLabel(el)||d.label||'';if(lbl){_badgeCe=makeBadge(lbl,'tl_content',_contentElementId,getCeParentTable(el),el);clpBadgePos(_badgeCe,elVis);}
@@ -476,7 +484,7 @@ CLP_FE.on('clp:refresh',function(d){
       var doc=new DOMParser().parseFromString(html,'text/html');
       var fresh=null,live=null;
       for(var i=0;i<selectors.length;i++){var f=doc.querySelector(selectors[i]);var l=document.querySelector(selectors[i]);if(f&&l){fresh=f;live=l;break;}}
-      if(fresh&&live){for(var ai=0;ai<fresh.attributes.length;ai++){live.setAttribute(fresh.attributes[ai].name,fresh.attributes[ai].value);}live.innerHTML=fresh.innerHTML;var el=findEl(selectors);if(el){var vis=clpVisTarget(el);clpClear();_el=el;_elVis=vis;vis.classList.add('clp-sel');if(label){_badge=makeBadge(label,'tl_article',_articleId,'',el);clpBadgePos(_badge,vis);}}}
+      if(fresh&&live){for(var ai=0;ai<fresh.attributes.length;ai++){live.setAttribute(fresh.attributes[ai].name,fresh.attributes[ai].value);}live.innerHTML=fresh.innerHTML;var el=findEl(selectors);if(el){var vis=clpVisTarget(el);clpClear();_el=el;_elVis=vis;clpVisClassAdd(vis,'clp-sel');if(label){_badge=makeBadge(label,'tl_article',_articleId,'',el);clpBadgePos(_badge,vis);}}}
       window.parent.postMessage({version:1,type:'clp:refreshed',articleId:articleId},'*');
     })
     .catch(function(err){
@@ -509,7 +517,7 @@ document.addEventListener('mouseover',function(e){
   var lbl=table==='tl_article'?'ARTIKEL':getCeLabel(el);
   var vis=clpVisTarget(el);
   _hoverEl=el;_hoverElVis=vis;
-  vis.classList.add('clp-hover');
+  clpVisClassAdd(vis,'clp-hover');
   _hoverBadge=makeHoverBadge(lbl,table,id,getCeParentTable(el),el);
   clpBadgePos(_hoverBadge,vis);
   clpDeconflictHover();
