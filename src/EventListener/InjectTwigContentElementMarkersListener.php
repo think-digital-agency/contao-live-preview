@@ -117,13 +117,21 @@ class InjectTwigContentElementMarkersListener
     private function loadContentElements(int $pageId): array
     {
         // Load top-level elements (direct children of articles on this page).
+        // c.ptable = 'tl_article' is required, not just the join itself — pid is
+        // only unique *within* a ptable, so e.g. a tl_content row belonging to a
+        // tl_news record (ptable='tl_news') with the same numeric id as a real
+        // tl_article on this page would otherwise join in here too. That extra,
+        // never-actually-rendered row shifts the type+position counters in
+        // annotate() for every following same-type element on the page, mislabeling
+        // real content elements with a stranger's id (including tl_news ids,
+        // routing the edit badge to a random news record — found in production).
         $rawRows = $this->connection->fetchAllAssociative(
             'SELECT c.id, c.type, c.cssID
              FROM tl_content c
              INNER JOIN tl_article a ON a.id = c.pid
-             WHERE a.pid = :pageId AND c.invisible != :one AND a.published = :one
+             WHERE a.pid = :pageId AND c.ptable = :ptable AND c.invisible != :one AND a.published = :one
              ORDER BY a.sorting ASC, c.sorting ASC',
-            ['pageId' => $pageId, 'one' => '1'],
+            ['pageId' => $pageId, 'ptable' => 'tl_article', 'one' => '1'],
         );
 
         if ([] === $rawRows) {
