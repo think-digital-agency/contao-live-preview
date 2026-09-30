@@ -5,11 +5,14 @@ declare(strict_types=1);
 namespace ThinkDigital\ContaoLivePreview\Controller;
 
 use Contao\CoreBundle\Framework\ContaoFramework;
+use Contao\CoreBundle\Routing\ContentUrlGenerator;
+use Contao\NewsModel;
 use Contao\PageModel;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\EventDispatcher\EventDispatcherInterface;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 use Symfony\Component\Security\Http\Attribute\IsGranted;
 use ThinkDigital\ContaoLivePreview\Service\LabelCleanerTrait;
 use ThinkDigital\ContaoLivePreview\Service\PreviewUrlResolverInterface;
@@ -27,6 +30,7 @@ class PreviewResolverController extends AbstractController
         private readonly ContaoFramework $framework,
         private readonly \Symfony\Contracts\Translation\TranslatorInterface $translator,
         private readonly EventDispatcherInterface $eventDispatcher,
+        private readonly ContentUrlGenerator $urlGenerator,
     ) {
     }
 
@@ -81,8 +85,6 @@ class PreviewResolverController extends AbstractController
             return $this->json(['error' => 'Page not found'], 404);
         }
 
-        $previewUrl = $this->buildPreviewUrl($pageData['pageId']);
-
         $articleId        = $pageData['articleId'] ?? null;
         $articleAlias     = (string) ($pageData['articleAlias'] ?? '');
         $articleCssId     = (string) ($pageData['articleCssId'] ?? '');
@@ -94,6 +96,19 @@ class PreviewResolverController extends AbstractController
         $newsId    = $pageData['newsId']  ?? null;
         $newsAlias  = (string) ($pageData['newsAlias']  ?? '');
         $newsTitle  = (string) ($pageData['newsTitle']  ?? '');
+
+        // A news record's own reader page (buildPreviewUrl($pageData['pageId'])) is
+        // the archive's bare jumpTo target, e.g. /news-blog/details.html — Contao's
+        // news reader only shows an actual article when the item's alias/auto_item
+        // is part of the URL. Without it the iframe shows an empty reader and every
+        // tl_news highlightSelector below matches nothing (#20 never actually worked
+        // end-to-end because of this, independently of the marker-injection fix).
+        // buildNewsPreviewUrl() asks Contao's own routing (NewsResolver, the same
+        // mechanism {{news_url::42}} uses) for the real item URL; falls back to the
+        // bare reader page if that fails (e.g. the archive's reader page is gone).
+        $previewUrl = (\is_int($newsId) && $newsId > 0)
+            ? ($this->buildNewsPreviewUrl($newsId) ?: $this->buildPreviewUrl($pageData['pageId']))
+            : $this->buildPreviewUrl($pageData['pageId']);
 
         // When a content element belongs to a news record (ptable='tl_news'),
         // the edit URL must use do=news instead of do=article.
@@ -186,6 +201,32 @@ class PreviewResolverController extends AbstractController
 
         try {
             return $candidate->getAbsoluteUrl();
+        } catch (\Throwable) {
+            return '';
+        }
+    }
+
+    /**
+     * The news item's own frontend URL (reader page + its alias/auto_item, url
+     * suffix, …) via Contao's routing — the same resolver chain {{news_url::}}
+     * and the sitemap use — rather than hand-building the path. '' on any
+     * failure (no such news record, archive's jumpTo page not routable, …) so
+     * the caller can fall back to the plain reader-page URL.
+     */
+    private function buildNewsPreviewUrl(int $newsId): string
+    {
+        /** @var \Contao\Model\Registry $newsAdapter */
+        $newsAdapter = $this->framework->getAdapter(NewsModel::class);
+
+        /** @var NewsModel|null $news */
+        $news = $newsAdapter->findById($newsId);
+
+        if (null === $news) {
+            return '';
+        }
+
+        try {
+            return $this->urlGenerator->generate($news, [], UrlGeneratorInterface::ABSOLUTE_URL);
         } catch (\Throwable) {
             return '';
         }

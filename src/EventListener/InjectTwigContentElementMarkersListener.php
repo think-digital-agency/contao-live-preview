@@ -17,8 +17,11 @@ use ThinkDigital\ContaoLivePreview\Service\LabelCleanerTrait;
  * Injects data-contao-table="tl_content", data-contao-id="{N}", and
  * data-contao-label="{Human label}" into Twig-first content element wrappers.
  *
- * Twig-first CEs registered via #[AsContentElement] bypass the getContentElement
- * hook entirely — InjectContentElementMarkersListener cannot reach them. Also,
+ * Twig-first CEs registered via #[AsContentElement] were assumed to bypass the
+ * getContentElement hook entirely, making InjectContentElementMarkersListener
+ * unable to reach them — Contao 6 actually still fires that hook for them as a
+ * compatibility shim, so both listeners can mark the same CE (one on the outer
+ * wrapper, one on the inner tag); annotate() below guards against that. Also,
  * Container CEs (Card, Accordion, Elementgruppe, …) that wrap nested fragments
  * are not annotated by InjectContentElementMarkersListener because the hook
  * fires for the parent CE after its children have already been rendered, so the
@@ -248,6 +251,34 @@ class InjectTwigContentElementMarkersListener
             $type  = $row['type'];
             $ceId  = $row['id'];
             $cssId = $row['cssId'];
+
+            // Already marked elsewhere in this response — skip. Design+-style CE
+            // templates (and others) wrap the ce_/content-{type} tag this listener
+            // targets in an outer grid-column div; for native #[AsContentElement]
+            // controllers Contao 6 still fires the legacy getContentElement hook as
+            // a compatibility shim (InjectContentElementMarkersListener's own
+            // docblock assumes it doesn't, for "Twig-first" elements — it does),
+            // which marks that OUTER div (the first tag of its buffer) before this
+            // listener ever runs. Both markers then exist for the same CE id: the
+            // outer (data) element from the hook, the inner (visual) one from here.
+            // clpVisTarget() in the injected FE script deliberately keeps the outer
+            // element as the single source of truth for identity (_el/_elCe) and
+            // only borrows the inner one's box for the outline/badge position — a
+            // second, independently-matched marker on that inner element breaks the
+            // "is this the already-active element" check (object-identity, not
+            // id-based) in the mouseover handler, since e.target.closest(…) now
+            // resolves to the inner node instead of walking up to the outer one:
+            // hovering the active element showed a second, overlapping hover badge.
+            // A content-check (not just "this exact tag") catches that case and any
+            // other listener/theme that already annotated this id.
+            // Matches the exact attribute pair (both listeners always render
+            // data-contao-table immediately before data-contao-id, see $attrString
+            // below and InjectContentElementMarkersListener) — a bare data-contao-id
+            // check would also skip this CE if an unrelated tl_module etc. elsewhere
+            // on the page happens to share the same numeric id.
+            if (str_contains($content, 'data-contao-table="tl_content" data-contao-id="' . $ceId . '"')) {
+                continue;
+            }
 
             $label = $this->resolveLabel($type, $this->translator);
             $attrString = ' data-contao-table="tl_content"'
