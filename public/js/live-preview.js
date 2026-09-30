@@ -44,6 +44,65 @@
     if (window.__clpLoaded) return;
     window.__clpLoaded = true;
 
+    // -------------------------------------------------------------------------
+    // CLP_BE — backend message-handler registry (parent window)
+    //
+    // Id-keyed so a handler can be replaced or removed without touching the
+    // bundle's source: CLP_BE.on('clp:edit', fn) registers the core handler
+    // under id 'clp:edit' (id defaults to type when omitted); a third party
+    // overrides it by registering under the SAME id, or adds a parallel
+    // handler under a new id via CLP_BE.on('clp:edit', fn, 'acme:edit').
+    //
+    // CLP_BE.augment(type, fn, id?) registers an outgoing-payload augmenter: fn
+    // receives (payload, info) before the bundle posts a message of that type
+    // and may mutate payload in place (or return a new object) to add/override
+    // fields. This is how third-party BE JS enriches the clp:highlight payload
+    // (and thus ctx for FE badge providers) with data the PHP resolver doesn't
+    // return. See docs/EXTENDING.md.
+    // -------------------------------------------------------------------------
+    window.CLP_BE = {
+        version: 1,
+        isInitialised: false,
+        _h: {},                         // { type: Map<id, fn> }  — incoming handlers
+        _aug: {},                       // { type: Map<id, fn> }  — outgoing augmenters
+        on(type, fn, id) {
+            ((this._h[type] ??= new Map())).set(id ?? type, fn);
+            return this;
+        },
+        off(type, id) {
+            this._h[type]?.delete(id ?? type);
+            return this;
+        },
+        dispatch(e) {
+            const d = e.data;
+            if (!d || typeof d.type !== 'string') return;
+            this._h[d.type]?.forEach((fn) => { try { fn(d, e); } catch {} });
+        },
+        augment(type, fn, id) {
+            ((this._aug[type] ??= new Map())).set(id ?? type, fn);
+            return this;
+        },
+        unaugment(type, id) {
+            this._aug[type]?.delete(id ?? type);
+            return this;
+        },
+        // Applies all augmenters registered for `type` to `payload`. `info` is
+        // read-only context passed to each augmenter (never written back). Returns
+        // the (possibly replaced) payload. If an augmenter throws it is skipped.
+        _applyAug(type, payload, info) {
+            const map = this._aug[type];
+            if (!map) return payload;
+            let out = payload;
+            map.forEach((fn) => {
+                try {
+                    const r = fn(out, info);
+                    if (r && typeof r === 'object') out = r;
+                } catch {}
+            });
+            return out;
+        },
+    };
+
     const RESOLVE_ENDPOINT = '/contao/live-preview/resolve';
     const UNRESOLVED       = {};          // sentinel — distinct from null ("showing fallback")
     const LS_OPEN_KEY      = 'clp_sidebar_open';
@@ -58,7 +117,7 @@
     // -------------------------------------------------------------------------
     // DOM references — acquired once; survive Turbo nav (sidebar lives on <html>)
     // -------------------------------------------------------------------------
-    let sidebar, frame, frameWrap, urlDisplay, vwInput, vhInput, zoomSelect;
+    let sidebar, frame, frameWrap, urlDisplay, vwInput, vhInput, zoomSelect, gridToggle;
 
     // -------------------------------------------------------------------------
     // Persistent state
@@ -94,6 +153,12 @@
     // null when context is tl_page (no article).
     let currentArticleId    = null;
     let currentArticleTitle = null;
+
+    // Full resolver response for the current context (pageId, aliases,
+    // contentElementParentTable, …). Spread into the clp:highlight payload so any
+    // resolver field flows through to CLP_FE badge providers' ctx (providers
+    // tolerate unknown fields). See docs/EXTENDING.md "ctx pass-through".
+    let currentResolveData = null;
 
     let globalListenersBound = false;
     let refreshTimer         = null;
@@ -146,6 +211,7 @@
         if (!vwInput)    vwInput    = document.getElementById('clp-vw');
         if (!vhInput)    vhInput    = document.getElementById('clp-vh');
         if (!zoomSelect) zoomSelect = document.getElementById('clp-zoom');
+        if (!gridToggle) gridToggle = document.getElementById('clp-grid-toggle');
 
         if (!sidebar || !frame) return;
 
@@ -233,64 +299,95 @@
 
             document.addEventListener('submit', handleFormSubmit);
 
-            // clp:refreshed from the iframe confirms the DOM swap completed.
-            // clp:edit opens the article or content element in the backend editor.
-            window.addEventListener('message', (e) => {
-                if (e.data?.type === 'clp:refreshed') {
-                    localStorage.removeItem(LS_SAVE_KEY);
-                    pendingSave = false; // iframe confirmed DOM-swap complete
-                    clearTimeout(refreshedTimeoutId);
-                    refreshedTimeoutId = null;
-                    return;
-                }
+            // Incoming iframe messages are dispatched through CLP_BE so third
+            // parties can register/override handlers without patching this file.
+            // Core handlers are registered below via CLP_BE.on(type, fn, id?).
+            window.addEventListener('message', (e) => { CLP_BE.dispatch(e); });
+
+            // --- Core message handlers (registered once, replaceable by id) ---
+
+            // clp:refreshed — iframe confirms the clp:refresh DOM swap completed
+            // (or failed). Clears the pending-save state so resolveAndShow may
+            // set frame.src again.
+            CLP_BE.on('clp:refreshed', () => {
+                localStorage.removeItem(LS_SAVE_KEY);
+                pendingSave = false;
+                clearTimeout(refreshedTimeoutId);
+                refreshedTimeoutId = null;
+            });
+
+            // clp:edit — user clicked the edit pencil on a badge; navigate the
+            // backend to the matching edit view (do depends on table/parentTable).
+            CLP_BE.on('clp:edit', (d) => {
+                const { table, id, parentTable } = d;
+                if (!table || !id) return;
                 // Canonical backend entry point — set server-side from the
                 // contao_backend route. NOT window.location.pathname, which may
                 // be a sub-route like /contao/template-studio and would 404.
                 const beUrl = (sidebar && sidebar.dataset.clpBackendUrl) || '/contao';
-
-                if (e.data?.type === 'clp:edit') {
-                    const { table, id } = e.data;
-                    if (!table || !id) return;
-                    let params;
-                    if (table === 'tl_content') {
-                        params = new URLSearchParams({ do: 'article', table: 'tl_content', act: 'edit', id: String(id) });
-                    } else if (table === 'tl_article') {
-                        params = new URLSearchParams({ do: 'article', table: 'tl_content', id: String(id) });
-                    } else if (table === 'tl_module') {
-                        params = new URLSearchParams({ do: 'themes', table: 'tl_module', act: 'edit', id: String(id) });
-                    } else {
-                        // Any other (custom child) table: reuse the current backend
-                        // module, falling back to a table-derived guess. Standard
-                        // Contao edit-URL shape — the server-side resolver already
-                        // handled the preview side via the DCA ptable walk.
-                        const doV = new URLSearchParams(window.location.search).get('do') || '';
-                        params = new URLSearchParams({
-                            do: doV || table.replace(/^tl_/, ''),
-                            table, act: 'edit', id: String(id),
-                        });
-                    }
-                    const url = beUrl + '?' + params.toString();
-                    if (window.Turbo) { Turbo.visit(url); } else { window.location.href = url; }
+                let params;
+                if (table === 'tl_content' && parentTable === 'tl_news') {
+                    params = new URLSearchParams({ do: 'news', table: 'tl_content', act: 'edit', id: String(id) });
+                } else if (table === 'tl_content') {
+                    params = new URLSearchParams({ do: 'article', table: 'tl_content', act: 'edit', id: String(id) });
+                } else if (table === 'tl_article') {
+                    params = new URLSearchParams({ do: 'article', table: 'tl_content', id: String(id) });
+                } else if (table === 'tl_news') {
+                    params = new URLSearchParams({ do: 'news', table: 'tl_news', act: 'edit', id: String(id) });
+                } else if (table === 'tl_module') {
+                    params = new URLSearchParams({ do: 'themes', table: 'tl_module', act: 'edit', id: String(id) });
+                } else {
+                    // Any other (custom child) table: reuse the current backend
+                    // module, falling back to a table-derived guess. Standard
+                    // Contao edit-URL shape — the server-side resolver already
+                    // handled the preview side via the DCA ptable walk.
+                    const doV = new URLSearchParams(window.location.search).get('do') || '';
+                    params = new URLSearchParams({
+                        do: doV || table.replace(/^tl_/, ''),
+                        table, act: 'edit', id: String(id),
+                    });
                 }
-                if (e.data?.type === 'clp:duplicate') {
-                    const id = e.data.id;
-                    if (!id) return;
-                    const rt   = window.Contao?.request_token || window.Contao?.requestToken || '';
-                    const doV  = new URLSearchParams(window.location.search).get('do') || 'article';
-                    const params = new URLSearchParams({ do: doV, table: 'tl_content', act: 'copy', mode: '4', id: String(id), rt });
-                    const url  = beUrl + '?' + params.toString();
-                    if (window.Turbo) { Turbo.visit(url); } else { window.location.href = url; }
-                }
-                if (e.data?.type === 'clp:insert-after') {
-                    const id = e.data.id;
-                    if (!id) return;
-                    const rt   = window.Contao?.request_token || window.Contao?.requestToken || '';
-                    const doV  = new URLSearchParams(window.location.search).get('do') || 'article';
-                    const params = new URLSearchParams({ do: doV, table: 'tl_content', act: 'create', mode: '4', pid: String(id), rt });
-                    const url  = beUrl + '?' + params.toString();
-                    if (window.Turbo) { Turbo.visit(url); } else { window.location.href = url; }
-                }
+                const url = beUrl + '?' + params.toString();
+                if (window.Turbo) { Turbo.visit(url); } else { window.location.href = url; }
             });
+
+            // clp:duplicate — user clicked duplicate on a CE badge; trigger
+            // Contao's copy action for that element.
+            CLP_BE.on('clp:duplicate', (d) => {
+                const id = d.id;
+                if (!id) return;
+                const rt   = window.Contao?.request_token || window.Contao?.requestToken || '';
+                const doV  = new URLSearchParams(window.location.search).get('do') || 'article';
+                const beUrl = (sidebar && sidebar.dataset.clpBackendUrl) || '/contao';
+                // tl_content is a parent view with sorting: core uses mode=1 (paste
+                // after) + &ptable=tl_content when the CE's parent is itself a
+                // tl_content (element group child). Without ptable, dynamicPtable
+                // falls back to the DCA default 'tl_article' and the copy is rejected
+                // ("not creatable") for group children. See DC_Table::findPtable().
+                const params = new URLSearchParams({ do: doV, table: 'tl_content', act: 'copy', mode: '1', id: String(id), pid: String(id), rt });
+                if (d.parentTable === 'tl_content') params.set('ptable', 'tl_content');
+                const url  = beUrl + '?' + params.toString();
+                if (window.Turbo) { Turbo.visit(url); } else { window.location.href = url; }
+            });
+
+            // clp:insert-after — user clicked "new element after" on a CE badge;
+            // trigger Contao's create action positioned after that element.
+            CLP_BE.on('clp:insert-after', (d) => {
+                const id = d.id;
+                if (!id) return;
+                const rt   = window.Contao?.request_token || window.Contao?.requestToken || '';
+                const doV  = new URLSearchParams(window.location.search).get('do') || 'article';
+                const beUrl = (sidebar && sidebar.dataset.clpBackendUrl) || '/contao';
+                // Same rationale as clp:duplicate: mode=1 (create after pid) +
+                // &ptable=tl_content for group children.
+                const params = new URLSearchParams({ do: doV, table: 'tl_content', act: 'create', mode: '1', pid: String(id), rt });
+                if (d.parentTable === 'tl_content') params.set('ptable', 'tl_content');
+                const url  = beUrl + '?' + params.toString();
+                if (window.Turbo) { Turbo.visit(url); } else { window.location.href = url; }
+            });
+
+            // This can be checked by third party scripts to only register custom handlers AFTER core handlers are registered
+            CLP_BE.isInitialised = true;
 
             // Re-clamp sidebar width whenever the browser window is resized.
             // Uses the last persisted normal-mode width as the target; overlay
@@ -311,6 +408,7 @@
 
         // Context from the previous page is stale — resolve for the new URL.
         currentContext = UNRESOLVED;
+        currentResolveData = null;
         triggerResolve();
     }
 
@@ -418,8 +516,16 @@
             return { table: 'tl_article', id };
         }
 
+        if (doV === 'news' && tbl === 'tl_content' && !act) {
+            return { table: 'tl_news', id };
+        }
+
         if (doV === 'page' && id > 0) {
             return { table: 'tl_page', id };
+        }
+
+        if (doV === 'news' && id > 0) {
+            return { table: 'tl_news_archive', id };
         }
 
         if (tbl === 'tl_module' && act === 'edit' && id > 0) {
@@ -486,23 +592,45 @@
         // When called as a load event listener, behavior is an Event object — ignore it.
         const b = (behavior === 'instant' || behavior === 'smooth') ? behavior : 'smooth';
         const isCe = currentContext?.table === 'tl_content';
+        const isNews = currentContext?.table === 'tl_news';
         // CE label: DCA label or raw type, always uppercase (e.g. "ICON LISTE", "TEXT")
         const ceLabel = isCe
             ? (currentContentElementLabel || currentContentElementType || '').toUpperCase()
             : '';
         // Article label: always just "ARTIKEL"
         const articleLabel = 'ARTIKEL';
+        const newsLabel = 'NACHRICHT';
         try {
-            frame.contentWindow.postMessage({
+            // Pass resolver data through to the iframe so CLP_FE badge providers
+            // receive it on ctx. Core fields below override any resolver fields
+            // of the same name; version/type are never overwritten by resolver data.
+            const extra = currentResolveData ? { ...currentResolveData } : {};
+            delete extra.version; delete extra.type; delete extra.previewUrl;
+            delete extra.highlightSelectors; delete extra.articleSelectors;
+            delete extra.error;
+            let payload = {
+                ...extra,
+                version:          1,
                 type:             'clp:highlight',
                 selectors:        highlightSelectors,
                 articleSelectors,
                 scrollBehavior:   b,
-                label:            isCe ? ceLabel : articleLabel,
+                label:            isCe ? ceLabel : (isNews ? newsLabel : articleLabel),
                 articleLabel,
                 articleId:        currentArticleId,
                 contentElementId: isCe ? currentContext?.id : null,
-            }, '*');
+            };
+            // Let third-party BE JS augment the payload (add/override fields).
+            // version/type are re-stamped after so an augmenter can't break the
+            // protocol contract. See docs/EXTENDING.md "CLP_BE.augment".
+            payload = CLP_BE._applyAug('clp:highlight', payload, {
+                context: currentContext,
+                articleId: currentArticleId,
+                resolveData: currentResolveData,
+            });
+            payload.version = 1;
+            payload.type = 'clp:highlight';
+            frame.contentWindow.postMessage(payload, '*');
         } catch { }
     }
 
@@ -529,6 +657,7 @@
             const data = await res.json();
 
             if (data.previewUrl) {
+                currentResolveData          = data;
                 highlightSelectors        = data.highlightSelectors  || [];
                 articleSelectors          = data.articleSelectors    || [];
                 currentArticleId          = data.articleId           || null;
@@ -640,6 +769,7 @@
 
         try {
             frame.contentWindow.postMessage({
+                version:   1,
                 type:      'clp:refresh',
                 articleId: currentArticleId,
                 selectors: articleSelectors.length ? articleSelectors : highlightSelectors,
@@ -889,6 +1019,21 @@
             zoomSelect.addEventListener('change', () => {
                 localStorage.setItem(LS_ZOOM_KEY, zoomSelect.value);
                 applyViewport();
+            });
+        }
+
+        if (gridToggle) {
+            // Restore saved state
+            const gridOn = localStorage.getItem('clp_grid_overlay') === '1';
+            gridToggle.setAttribute('aria-pressed', String(gridOn));
+            gridToggle.classList.toggle('active', gridOn);
+
+            gridToggle.addEventListener('click', () => {
+                const on = gridToggle.getAttribute('aria-pressed') !== 'true';
+                gridToggle.setAttribute('aria-pressed', String(on));
+                gridToggle.classList.toggle('active', on);
+                localStorage.setItem('clp_grid_overlay', on ? '1' : '0');
+                try { frame?.contentWindow?.postMessage({ version: 1, type: 'clp:grid', on }, '*'); } catch { }
             });
         }
 
