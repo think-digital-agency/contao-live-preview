@@ -509,3 +509,32 @@ This replaces the previous "one bundle re-aliases the interface" model, under wh
 - (−) One `loadDataContainer()` + one `SELECT pid[, ptable]` per chain hop on the resolve request (cached DCA, single-row lookups — negligible)
 - (−) Tables whose parent chain does not terminate in the three core tables still need a custom tagged resolver
 - (−) An existing bundle that re-aliased `PreviewUrlResolverInterface` now shadows the chain instead of just the core resolver — no known shipped consumer (feature is new in 3.0.2), documented as the escape hatch
+
+---
+
+## ADR-022: Hand-merged integration of four concurrent community PRs
+
+**Date:** 2026-09-30
+**Status:** Accepted
+
+**Context:**
+An external contributor (KIWI. Werbeagentur / falkgeist) opened four PRs against the same `main` commit within a short window: element-group duplicate/insert-after + nested-marker fixes (#18), a grid/box-model overlay toggle (#19), news-teaser preview support (#20), and a JS extensibility API — `CLP_BE`/`CLP_FE` registries, a `clp:resolve` PHP event, `injectLivePreview`/`injectPreviewScript` hooks (#21). All four touch `public/js/live-preview.js` and/or `src/EventListener/InjectPreviewScriptListener.php`; #20 and #21 also both touch `src/Controller/PreviewResolverController.php`. Merging them sequentially through GitHub would replay the same manual conflict resolution three times and risked silently dropping fixes each later branch never saw (#21 in particular predates #18's and #20's fixes and reintroduces their regressions verbatim).
+
+**Decision:**
+Merge all four into one hand-built integration branch instead of sequential GitHub merges:
+
+1. **#21 (extensibility) as the architectural base** for the three shared files — it is the largest rewrite (`CLP_BE`/`CLP_FE` registries replacing the old if/else message dispatch) and the other three PRs' changes are small, localized diffs against the pre-#21 code that are straightforward to re-express against the new registries.
+2. **Files touched by exactly one PR** (`docs/EXTENDING.md`, `docs/PROTOCOL.md`, `InjectTwigContentElementMarkersListener.php`, `InjectNewsMarkersListener.php`, `PreviewUrlResolver.php`, the CSS/Twig grid-toggle markup, the language files, etc.) were taken as-is.
+3. **Regressions #21 reintroduced were fixed by hand**, not copy-pasted blind:
+   - `clp:duplicate` / `clp:insert-after` used `mode=4` again (#18 had already fixed this to `mode=1` + `&ptable=tl_content` for element-group children — `mode=4` is rejected by `DC_Table::findPtable()` for group children).
+   - `clp:edit` had no `tl_news` / `parentTable==='tl_news'` routing (#20's `do=news` URLs), and the news-archive/news-list `parseContext()` branches were missing entirely.
+   - The badge CSS/positioning polish from #18 (outline via `::before` pseudo-element instead of a plain `outline` — the plain version gets clipped by `overflow:hidden` ancestors; dynamic hover-badge margin; parent-badge overlap avoidance on repeated hover) was absent from #21's rewrite.
+4. **#19's `clp:grid` handler was re-expressed as `CLP_FE.on('clp:grid', …)`** instead of kept as a raw `if (e.data.type === 'clp:grid')` check, so it participates in the new dispatch/override system like every other message type; its outgoing `postMessage` was given `version: 1` to match the protocol convention #21 introduced everywhere else.
+5. **One bug found and fixed that pre-dated all four PRs' merge conflicts**: highlighting a top-level `tl_news` record (not a content element inside one) fell through to the generic single-highlight path, which hardcoded `table: 'tl_article'` and used the (null, for news) article ID — the edit badge silently rendered with no click handler. Fixed by adding an `isNews` branch on both sides of the `postMessage` boundary (`live-preview.js` sets `newsLabel`/`isNews` on the highlight payload; `InjectPreviewScriptListener.php`'s single-highlight branch resolves `table: 'tl_news'` / `id: d.newsId` via the existing resolver-data pass-through instead of `_articleId`).
+
+**Consequences:**
+- (+) One PR to review and one CI run, instead of three rounds of the same conflict
+- (+) No feature silently regresses another — every reconciliation point above was diffed against all four source branches, not assumed
+- (+) The news-post-level highlight fix benefits everyone immediately, instead of surfacing later as its own bug report
+- (−) The integration branch's history does not preserve each contributor's individual commits; attribution is captured in the PR description and in this ADR instead
+- (−) Future community PRs against any of these four files should rebase onto the merged result — the original four branches are now behind and should not be merged again
