@@ -502,37 +502,16 @@ document.addEventListener('mouseover',function(e){
   if(!el){clpHoverClear();return;}
   if(el===_hoverEl)return;
   clpHoverClear();
+  if(el===_el||el===_elCe)return;
   var table=el.dataset.contaoTable;
   var id=parseInt(el.dataset.contaoId,10)||0;
   if(!table||!id)return;
   var lbl=table==='tl_article'?'ARTIKEL':getCeLabel(el);
   var vis=clpVisTarget(el);
-  _hoverBadge=makeHoverBadge(lbl,table,id,getCeParentTable(el),el);
-  clpBadgePos(_hoverBadge,vis);
-  if(el===_el||el===_elCe){
-    // Hover target is already the highlighted element. Probe the parent's hover
-    // badge and swap to it only if it would overlap el's own badge — otherwise
-    // the parent badge is redundant clutter next to el's, so discard it.
-    var parent=el.parentElement.closest('[data-contao-table]');
-    if(parent){
-      var pVis=clpVisTarget(parent);
-      var pTable=parent.dataset.contaoTable;
-      var pId=parseInt(parent.dataset.contaoId,10)||0;
-      if(pTable&&pId){
-        var pLabel=pTable==='tl_article'?'ARTIKEL':getCeLabel(parent);
-        var pBadge=makeHoverBadge(pLabel,pTable,pId,getCeParentTable(parent),parent);
-        clpBadgePos(pBadge,pVis);
-        if(_rectsOverlap(pBadge.getBoundingClientRect(),_hoverBadge.getBoundingClientRect())){
-          _hoverBadge.remove();
-          _hoverBadge=pBadge;el=parent;vis=pVis;
-        }else{
-          pBadge.remove();
-        }
-      }
-    }
-  }
   _hoverEl=el;_hoverElVis=vis;
   vis.classList.add('clp-hover');
+  _hoverBadge=makeHoverBadge(lbl,table,id,getCeParentTable(el),el);
+  clpBadgePos(_hoverBadge,vis);
   clpDeconflictHover();
 });
 // mouseout: _hoverEl (the data/container element) defines the boundary.
