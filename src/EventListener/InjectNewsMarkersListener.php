@@ -6,18 +6,26 @@ namespace ThinkDigital\ContaoLivePreview\EventListener;
 
 use Contao\CoreBundle\DependencyInjection\Attribute\AsHook;
 use Contao\CoreBundle\Routing\ScopeMatcher;
-use Contao\CoreBundle\String\HtmlAttributes;
 use Contao\FrontendTemplate;
 use Contao\Input;
 use Contao\Module;
-use Contao\StringUtil;
 use Symfony\Component\HttpFoundation\RequestStack;
-use Twig\Markup;
 
 /**
- * Injects data-contao-table="tl_news", data-contao-id="{N}", and
- * data-contao-label="Nachrichten" into news teaser wrappers when the page is
- * loaded inside the live-preview iframe (?_clp=1).
+ * Appends a plain `clp-news-{id}` marker class to every news teaser/article
+ * template when the page is loaded inside the live-preview iframe (?_clp=1).
+ *
+ * This only appends a bare CSS class token, not the final data-contao-*
+ * attributes — news-bundle's Twig templates concatenate the `class` variable
+ * into an already-open class attribute, e.g.
+ * `class="layout_full block{{ class }}"` in news_full.html.twig (same in
+ * news_latest.html.twig, used for teasers). Writing full `key="value"`
+ * attribute syntax into that variable breaks the markup: the first quote
+ * inside the injected string closes the `class` attribute early and
+ * everything after it is parsed as garbage, so data-contao-table ends up
+ * missing from the rendered HTML entirely. A bare class token has no such
+ * problem. InjectNewsResponseMarkersListener does the real attribute
+ * injection afterwards, on the fully rendered HTML.
  */
 #[AsHook('parseArticles')]
 class InjectNewsMarkersListener
@@ -33,23 +41,12 @@ class InjectNewsMarkersListener
         if (
             $this->scopeMatcher->isBackendRequest($this->requestStack->getCurrentRequest()) // skip in backend
             || !Input::get('_clp') // only show in live preview
-            || str_contains($template->class, 'data-contao-table=') // skip if already annotated
             || null === $template->id // skip without valid id
+            || str_contains((string) $template->class, 'clp-news-') // skip if already marked
         ) {
             return;
         }
 
-        // Create data marker attributes
-        $attributes = new HtmlAttributes([
-            'data-contao-table' => 'tl_news',
-            'data-contao-id' => $template->id,
-            'data-contao-label' => $GLOBALS['TL_LANG']['CLP']['news'],
-        ]);
-
-        // Explicitly encode class attribute and append data markers
-        $strClass = StringUtil::specialcharsAttribute($template->class) . substr($attributes->toString(), 0, -1);
-
-        // Inject (encoded) class with appended markers using \Twig\Markup (to prevent escaping).
-        $template->class = new Markup($strClass, 'UTF-8');
+        $template->class = ((string) $template->class) . ' clp-news-' . $template->id;
     }
 }

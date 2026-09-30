@@ -16,6 +16,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Preview badge outline is no longer clipped by an `overflow: hidden` ancestor — outline is now drawn on a `::before` pseudo-element instead of the element's own `outline` property.
 - Hovering an element whose badge would overlap the currently-selected element's badge now offsets automatically instead of rendering on top of it.
 - Highlighting a top-level `tl_news` record (previewing a news post directly, not a content element inside one) now shows a working edit badge — it previously fell through to the generic single-highlight path, which rendered a badge with no click handler.
+- News post and teaser wrappers are now correctly annotated with `data-contao-*` markers in the rendered HTML. news-bundle's Twig templates concatenate the wrapper's `class` variable into an already-open `class="..."` attribute (e.g. `class="layout_full block{{ class }}"`); writing full `key="value"` attribute syntax into that variable broke the markup, so the markers never actually reached the DOM and news highlighting silently did nothing in either direction. `InjectNewsMarkersListener` now appends only a plain, quote-free marker class pre-render; the new `InjectNewsResponseMarkersListener` converts it into real attributes after the page is fully rendered.
+- Hovering the currently-active (blue-badged) element or article no longer also shows a second, overlapping pink hover badge that shifted the active badge's position.
 
 ## [3.0.5] - 2026-09-09
 
