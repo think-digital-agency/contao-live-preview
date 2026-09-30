@@ -13,6 +13,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Nested content-element marker detection (`InjectTwigContentElementMarkersListener`) now walks up to 10 levels deep, so element groups nested inside element groups are marked and highlighted correctly.
 - Grid/box-model overlay toggle icon replaced with a crop-marks glyph, clearer at 14px than the previous grid-lines icon.
 
+### Changed
+- Badge placement is now a fixed rule instead of reactive collision handling: container badges (article, and any group-type content element — Accordion, Card, Tabs, Elementgruppe — that has marked children of its own) always render outside/above their box; leaf badges (a plain content element, or a `tl_news` record) always render inside/top-left, even on a box shorter than the badge. Previously every badge decided inside-vs-above per its own box height, and an overlap between two independently-placed badges was corrected afterwards by nudging one of them up by the other's height (`clpDeconflict()`) — workable for a single collision, but stacked unpredictably with more than two badges near the same corner. The two badge kinds no longer share the same vertical band in the common case, so that reactive nudge is now rarely needed; it stays in place as a fallback for the remaining edge case (e.g. a group directly inside another group/article with no padding between them, where two "above" badges can still meet).
+
 ### Fixed
 - Preview badge outline is no longer clipped by an `overflow: hidden` ancestor — outline is now drawn on a `::before` pseudo-element instead of the element's own `outline` property.
 - Hovering an element whose badge would overlap the currently-selected element's badge now offsets automatically instead of rendering on top of it.

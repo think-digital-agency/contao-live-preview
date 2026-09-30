@@ -263,14 +263,23 @@ function clpVisClassRemove(el,cls){el.classList.remove(cls);if(!el.classList.con
 function clpClear(){if(_elVis){clpVisClassRemove(_elVis,'clp-sel');clpVisClassRemove(_elVis,'clp-sel-secondary');_elVis=null;}_el=null;if(_elCeVis){clpVisClassRemove(_elCeVis,'clp-sel');_elCeVis=null;}_elCe=null;if(_badge){_badge.remove();_badge=null;}if(_badgeCe){_badgeCe.remove();_badgeCe=null;}}
 function clpHoverClear(){if(_hoverElVis){clpVisClassRemove(_hoverElVis,'clp-hover');_hoverElVis=null;}_hoverEl=null;if(_hoverBadge){_hoverBadge.remove();_hoverBadge=null;}}
 function clpIsFixed(el){var n=el;while(n&&n!==document.body){if(getComputedStyle(n).position==='fixed')return true;n=n.parentElement;}return false;}
-// Position a badge at the top-left of its target. When the target box is too
-// short to contain the badge (empty article / element group with little padding),
-// render it just ABOVE the box instead of overflowing it, clamped into view.
+// Container badges (article, or a group-type CE with marked children of its own —
+// Accordion, Card, Tabs, Elementgruppe, …) always render OUTSIDE/above their box,
+// even when the box is tall enough to hold them — a badge sitting inside a
+// container's top-left corner reads as belonging to whatever is rendered right
+// there (its first child), not to the container itself. Leaf badges (a plain CE,
+// or a tl_news record) always render INSIDE/top-left, even when the box is
+// shorter than the badge (was: rendered above in that case — now: always inside,
+// by design; small elements simply get an overflowing badge). This fixed rule
+// replaces a per-badge "too short → above" fallback that, combined with
+// clpDeconflict()'s reactive overlap push, produced inconsistent stacking when a
+// container had little/no top padding. The outside/inside decision is
+// precomputed by _mkBadge() into b.dataset.clpOutside at creation time.
 function clpBadgePos(b,el){
   var r=el.getBoundingClientRect();
   var bh=b.offsetHeight||24;
   var m=b.classList.contains('clp-hover-badge')?_hoverBadgeMargin:_badgeMargin;
-  var above=r.height<bh+(m*2);
+  var above=b.dataset.clpOutside==='1';
   // no gap for above badges
   if(above&&b.classList.contains('clp-hover-badge'))m=0;
   if(clpIsFixed(el)){
@@ -371,6 +380,13 @@ function _mkBadge(cls,lbl,table,editId,parentTable,el){
   var vis=el?clpVisTarget(el):null;
   var ceType=(el&&table==='tl_content')?getCeType(el):null;
   var ctx={table:table,id:editId||0,parentTable:parentTable||'',el:el||null,vis:vis,ceType:ceType,ceLabel:el&&ceType?getCeLabel(el):null};
+  // Container badge (outside/above) vs leaf badge (inside/top-left) — see clpBadgePos().
+  // tl_article is always a container. tl_content is a container only when it has a
+  // marked descendant of its own (a group/Accordion/Card/Tabs CE nesting other CEs);
+  // a plain leaf CE has none. tl_news (and anything else) is always a leaf, even
+  // when — on a news reader page — its own content elements happen to be marked.
+  var outside=table==='tl_article'||(table==='tl_content'&&!!(el&&el.querySelector('[data-contao-table]')));
+  b.dataset.clpOutside=outside?'1':'';
   // each() returns {section,button} pairs in registration order. Split into the two
   // sections, render primaries, one separator (only if secondaries exist), then secondaries.
   var {primaries,secondaries}=_sortButtons(CLP_FE.each(ctx,CLP_FE.post.bind(CLP_FE)));
