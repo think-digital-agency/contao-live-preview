@@ -15,9 +15,16 @@ use ThinkDigital\ContaoLivePreview\Service\LabelCleanerTrait;
  * data-contao-label="{Human label}" into the content element wrapper when the
  * page is loaded inside the live-preview iframe (?_clp=1).
  *
- * Works for legacy ContentElement subclasses (including RSCE). Twig-first
- * content elements registered via #[AsContentElement] bypass this hook and are
- * handled by InjectTwigContentElementMarkersListener instead.
+ * Works for legacy ContentElement subclasses (including RSCE) and, in
+ * Contao 6, native #[AsContentElement] fragment controllers too — the
+ * getContentElement hook still fires for those as a compatibility shim,
+ * contrary to what an earlier version of this bundle assumed (a dedicated
+ * Twig-first listener existed for exactly that reason and was removed once
+ * this was verified, including for nested/group CEs — see ADR-022 point 13).
+ * Covers leaf and container/group CEs alike: the already-marked guard below
+ * only checks the opening tag, so a container whose children are already
+ * marked by the time this hook runs for the container itself still gets its
+ * own wrapper marked correctly.
  */
 #[AsHook('getContentElement')]
 class InjectContentElementMarkersListener

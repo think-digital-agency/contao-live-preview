@@ -18,9 +18,8 @@ use Symfony\Component\HttpKernel\KernelEvents;
  * news-bundle's templates concatenate the `class` variable into an
  * already-open class="..." attribute — see InjectNewsMarkersListener for
  * why the attributes can't be written directly from the parseArticles hook.
- * No DB lookup or position matching is needed here, unlike
- * InjectTwigContentElementMarkersListener: the marker class already carries
- * the news ID.
+ * No DB lookup or position matching is needed here: the marker class already
+ * carries the news ID.
  */
 #[AsEventListener(event: KernelEvents::RESPONSE, priority: -196)]
 class InjectNewsResponseMarkersListener
