@@ -77,11 +77,11 @@ class InjectPreviewScriptListener
 .clp-badge,.clp-hover-badge{position:absolute;display:flex;align-items:center;gap:5px;color:#fff;font:700 11px/1 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;padding:7px 9px 8px 10px;border-radius:3px;white-space:nowrap;transition:top .15s}
 .clp-badge{background:#0594ff;z-index:2147483647}
 .clp-hover-badge{background:#d946ef;z-index:2147483647}
-.clp-badge-edit{all:unset;display:flex;align-items:center;cursor:pointer;opacity:.75;transition:opacity .15s;pointer-events:auto;padding:8px;margin:-8px}
-.clp-badge-edit:hover{opacity:1}
+.clp-badge-edit{all:unset;display:flex;align-items:center;cursor:pointer;opacity:.75;border-radius:4px;transition:opacity .15s,background-color .15s;pointer-events:auto;padding:8px;margin:-8px}
+.clp-badge-edit:hover{opacity:1;background-color:rgba(0,0,0,.15)}
 .clp-badge-sep{display:inline-block;width:1px;height:12px;background:rgba(255,255,255,.3);margin:0 2px;flex-shrink:0;align-self:center}
-.clp-badge-action{all:unset;display:flex;align-items:center;justify-content:center;cursor:pointer;opacity:.75;transition:opacity .15s;pointer-events:auto;padding:5px;margin:-5px -2px;line-height:1}
-.clp-badge-action:hover{opacity:1}
+.clp-badge-action{all:unset;display:flex;align-items:center;justify-content:center;cursor:pointer;opacity:.75;border-radius:4px;transition:opacity .15s,background-color .15s;pointer-events:auto;padding:5px;margin:-5px -2px;line-height:1}
+.clp-badge-action:hover{opacity:1;background-color:rgba(0,0,0,.15)}
 /* Box model lines — horizontal ones span full doc width, vertical ones span full doc height */
 .clp-bm-h{position:absolute;left:0;right:0;height:1px;pointer-events:none;display:none}
 .clp-bm-v{position:absolute;top:0;bottom:0;width:1px;pointer-events:none;display:none}
