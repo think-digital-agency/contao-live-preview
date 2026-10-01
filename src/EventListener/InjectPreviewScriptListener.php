@@ -264,7 +264,11 @@ function clpVisTarget(el){var cc=String(el.className||'').split(/\s+/);for(var i
 // elements that are actually position:static (the common case) need the fix.
 function clpVisClassAdd(el,cls){el.classList.add(cls);if(getComputedStyle(el).position==='static')el.classList.add('clp-pos-fix');}
 function clpVisClassRemove(el,cls){el.classList.remove(cls);if(!el.classList.contains('clp-sel')&&!el.classList.contains('clp-sel-secondary')&&!el.classList.contains('clp-hover'))el.classList.remove('clp-pos-fix');}
-function clpClear(){if(_elVis){clpVisClassRemove(_elVis,'clp-sel');clpVisClassRemove(_elVis,'clp-sel-secondary');_elVis=null;}_el=null;if(_elCeVis){clpVisClassRemove(_elCeVis,'clp-sel');_elCeVis=null;}_elCe=null;if(_badge){_badge.remove();_badge=null;}if(_badgeCe){_badgeCe.remove();_badgeCe=null;}}
+// Split so clp:highlight can clear just the CE half when switching between
+// two content elements in the same article — see clp:highlight below for why.
+function clpClearPrimary(){if(_elVis){clpVisClassRemove(_elVis,'clp-sel');clpVisClassRemove(_elVis,'clp-sel-secondary');_elVis=null;}_el=null;if(_badge){_badge.remove();_badge=null;}}
+function clpClearCe(){if(_elCeVis){clpVisClassRemove(_elCeVis,'clp-sel');_elCeVis=null;}_elCe=null;if(_badgeCe){_badgeCe.remove();_badgeCe=null;}}
+function clpClear(){clpClearPrimary();clpClearCe();}
 // Clears both the primary hover target and the parent-boost target (see
 // mouseover below) unconditionally — on every call, not just when one of them
 // happens to be set. A previous attempt at boosting the parent's hover state
@@ -466,13 +470,27 @@ window.addEventListener('resize',clpReposAll,{passive:true});
 // measured above has already happened, so the plateau the check finds is the
 // real one. The stability check's own budget caps the total wait for content
 // that keeps animating indefinitely.
+//
+// That baseline only matters for the race it was measured against: a fresh
+// ?_clp=1 document whose own load-triggered JS hasn't run yet. Once this
+// script has waited it out once, the page is settled for as long as this
+// same document stays loaded — a later clp:highlight on the same page (e.g.
+// switching from one content element's badge to another's within the same
+// article, which doesn't reload the iframe) has nothing left to race and
+// paying 900ms again each time reads as the UI stalling, not settling. Found
+// exactly that way: switching between two CEs made the article's own badge
+// (whose target hadn't moved and didn't need the wait at all) flash away and
+// back, because every clp:highlight call — not just the first — went through
+// the same fixed delay regardless of whether anything was actually settling.
+var _clpSettledOnce=false;
 function clpWhenSettled(el,fn){
+  if(_clpSettledOnce){requestAnimationFrame(fn);return;}
   function afterBaseline(){
     var tries=0,maxTries=48,last=null;
     function check(){
       var r=el.getBoundingClientRect();
       var sig=r.top+'|'+r.left+'|'+r.width+'|'+r.height;
-      if(sig===last||++tries>=maxTries){fn();return;}
+      if(sig===last||++tries>=maxTries){_clpSettledOnce=true;fn();return;}
       last=sig;
       requestAnimationFrame(check);
     }
@@ -520,9 +538,18 @@ CLP_FE.on('clp:highlight',function(d){
   var aEl=findEl(d.articleSelectors||[]);
   if(el&&aEl&&el!==aEl){
     var elVis=clpVisTarget(el);var aElVis=clpVisTarget(aEl);
-    clpClear();_gen++;var myGen=_gen;
+    // Switching from one CE to another inside the same article (edit badge,
+    // or re-selecting a different element) must not touch the article's own
+    // badge/outline at all — it didn't change. Clearing and recreating it
+    // unconditionally made it visibly flash away and back on every such
+    // switch, since its removal (clpClear) and its recreation (inside
+    // clpWhenSettled below) are no longer the same synchronous step once
+    // clpWhenSettled can defer. Only the CE half is ever cleared here now;
+    // the article half is touched only when it has actually changed.
+    var articleUnchanged=(_el===aEl&&_elVis===aElVis&&!!_badge);
+    clpClearCe();_gen++;var myGen=_gen;
+    if(!articleUnchanged){clpClearPrimary();_el=aEl;_elVis=aElVis;clpVisClassAdd(aElVis,'clp-sel-secondary');}
     _elCe=el;_elCeVis=elVis;clpVisClassAdd(elVis,'clp-sel');
-    _el=aEl;_elVis=aElVis;clpVisClassAdd(aElVis,'clp-sel-secondary');
     clpWhenSettled(elVis,function(){
       if(_gen!==myGen)return;
       var rect=elVis.getBoundingClientRect();
@@ -530,7 +557,9 @@ CLP_FE.on('clp:highlight',function(d){
       // Prefer data-contao-label from the DOM — set by InjectContentElementMarkersListener
       // in fully-bootstrapped frontend context, so language files are always complete.
       var lbl=getCeLabel(el)||d.label||'';if(lbl){_badgeCe=makeBadge(lbl,'tl_content',_contentElementId,getCeParentTable(el),el);clpBadgePos(_badgeCe,elVis);}
-      var albl=d.articleLabel||'';if(albl){_badge=makeBadge(albl,'tl_article',_articleId,'',aEl);_badge.style.zIndex='2147483646';clpBadgePos(_badge,aElVis);}
+      if(!articleUnchanged){
+        var albl=d.articleLabel||'';if(albl){_badge=makeBadge(albl,'tl_article',_articleId,'',aEl);_badge.style.zIndex='2147483646';clpBadgePos(_badge,aElVis);}
+      }
       clpDeconflict();
     });
   }else if(el||aEl){
