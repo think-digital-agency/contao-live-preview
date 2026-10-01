@@ -3,7 +3,7 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [3.1.0] - 2026-09-30
+## [3.1.0] - 2026-10-01
 
 ### Added
 - **Extensibility API**: `window.CLP_BE` (backend) and `window.CLP_FE` (iframe) registries let third-party JS add/replace/remove badge actions and message handlers without patching this bundle — `.on()`/`.off()`/`.dispatch()` for messages, `.augment()`/`.unaugment()` for outgoing payloads (`CLP_BE`), `.set()`/`.remove()`/`.move()`/`.each()` for badge actions (`CLP_FE`). New `ResolvePreviewEvent` (`clp:resolve`) lets PHP listeners resolve a preview URL dynamically, ahead of the resolver chain. New `injectLivePreview` / `injectPreviewScript` hooks for injecting custom scripts. Versioned `postMessage` protocol documented in `docs/PROTOCOL.md`; extension guide in `docs/EXTENDING.md`.
