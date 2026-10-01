@@ -286,6 +286,28 @@
     flex-shrink: 0;
 }
 
+#clp-grid-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    margin-right: 6px;
+    padding: 0;
+    border: 1px solid var(--form-border, #bbb);
+    border-radius: var(--border-radius, 3px);
+    background: var(--content-bg, #fff);
+    color: inherit;
+    cursor: pointer;
+    flex-shrink: 0;
+    opacity: .5;
+    transition: opacity .15s, background .15s, color .15s;
+}
+
+#clp-grid-toggle.active {
+    opacity: 1;
+}
+
 /* -------------------------------------------------------------------------
    iframe wrapper + iframe
    ------------------------------------------------------------------------- */

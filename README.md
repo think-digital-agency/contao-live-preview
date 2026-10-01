@@ -137,6 +137,30 @@ Mindestens `pageId` + `alias` zurückgeben; optionale Zusatz-Keys (`articleId`,
 > `alias:` auf einen einzelnen eigenen Service umbiegen — dann ersetzt dieser
 > die komplette Auflösung inkl. `ptable`-Walk.
 
+Für dynamische Auflösung, die vom Request-Zustand abhängt, gibt es zusätzlich
+das `clp:resolve`-Event (siehe `docs/EXTENDING.md`).
+
+---
+
+## Erweiterung: Badge-Aktionen und Nachrichten (JS)
+
+Neben dem PHP-Resolver stellt die Extension zwei JavaScript-Registries bereit,
+über die sich **Badge-Aktionen** und **Nachrichten-Handler** ergänzen, ersetzen
+oder entfernen lassen — ohne die Quelldateien dieser Extension anzufassen:
+
+- **`CLP_BE`** (Backend-Sidebar): eingehende Nachrichten-Handler und ausgehende
+  Payload-Augmenter (`on`/`off`/`augment`).
+- **`CLP_FE`** (Frontend-iframe): Badge-Aktionen mit Sektionen und Positionen
+  (`set`/`remove`/`move`).
+
+Beide Registries kommunizieren über das in [docs/PROTOCOL.md](docs/PROTOCOL.md)
+dokumentierte, versionierte `postMessage`-Protokoll (v1).
+
+Eine ausführliche Beschreibung der APIs, der stabilen Core-IDs, des
+`ctx`-Kontextobjekts und komplette Beispiele (Aktion hinzufügen, Core-Aktion
+ersetzen, Aktion entfernen, Reihenfolge ändern, Backend-Handler registrieren)
+finden sich in [docs/EXTENDING.md](docs/EXTENDING.md).
+
 ---
 
 ## Bekannte Einschränkungen

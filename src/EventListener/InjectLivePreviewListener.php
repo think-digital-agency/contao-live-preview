@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace ThinkDigital\ContaoLivePreview\EventListener;
 
 use Contao\CoreBundle\DependencyInjection\Attribute\AsHook;
+use Contao\System;
 use Symfony\Component\Asset\Packages;
 use Symfony\Component\HttpFoundation\RequestStack;
 use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
@@ -81,6 +82,15 @@ class InjectLivePreviewListener
         // Contao's be_main renders </main> followed (after whitespace) by </div> for #container.
         // Inserting after </main> places the aside as the last flex child of #container.
         $buffer = str_replace('</main>', '</main>' . "\n" . $sidebarHtml, $buffer);
+
+        // HOOK: add custom live preview (backend) script injection
+        if (isset($GLOBALS['TL_HOOKS']['injectLivePreview']) && \is_array($GLOBALS['TL_HOOKS']['injectLivePreview']))
+        {
+            foreach ($GLOBALS['TL_HOOKS']['injectLivePreview'] as $callback)
+            {
+                $buffer = System::importStatic($callback[0])->{$callback[1]}($buffer);
+            }
+        }
 
         return $buffer;
     }

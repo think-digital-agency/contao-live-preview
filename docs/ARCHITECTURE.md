@@ -24,8 +24,7 @@ packages/contao-live-preview-bundle/
 │   │   ├── InjectLivePreviewListener.php       # outputBackendTemplate hook; asset URLs via Packages, backend URL via contao_backend route
 │   │   ├── InjectPreviewScriptListener.php     # KernelEvents::RESPONSE (-200) — injects highlight+hover script
 │   │   ├── InjectArticleMarkersListener.php    # parseFrontendTemplate hook — auto-injects article data-attrs
-│   │   ├── InjectContentElementMarkersListener.php # getContentElement hook — legacy CEs + RSCE
-│   │   ├── InjectTwigContentElementMarkersListener.php # KernelEvents::RESPONSE (-195) — Twig-first CEs
+│   │   ├── InjectContentElementMarkersListener.php # getContentElement hook — all CEs (legacy, RSCE, and Twig-first #[AsContentElement])
 │   │   └── InjectModuleMarkersListener.php     # getFrontendModule hook — layout modules (Header, Nav, Footer, …)
 │   ├── Resources/
 │   │   └── config/
@@ -50,7 +49,6 @@ packages/contao-live-preview-bundle/
 | `InjectPreviewScriptListener` | `EventListener\InjectPreviewScriptListener` | — |
 | `InjectArticleMarkersListener` | `EventListener\InjectArticleMarkersListener` | `RequestStack` |
 | `InjectContentElementMarkersListener` | `EventListener\InjectContentElementMarkersListener` | `RequestStack`, `ContaoFramework` |
-| `InjectTwigContentElementMarkersListener` | `EventListener\InjectTwigContentElementMarkersListener` | `RequestStack`, `ContaoFramework`, `Connection` |
 | `InjectModuleMarkersListener` | `EventListener\InjectModuleMarkersListener` | `RequestStack`, `ContaoFramework` |
 | `PreviewResolverController` | `Controller\PreviewResolverController` | `PreviewUrlResolverInterface` (→ `ChainPreviewUrlResolver`), `ContaoFramework` |
 | `ChainPreviewUrlResolver` | `Service\ChainPreviewUrlResolver` | `!tagged_iterator contao_live_preview.preview_url_resolver`, `PreviewUrlResolver` |
@@ -112,10 +110,8 @@ The `previewUrl` is built via `PageModel::findWithDetails($pageId)->getAbsoluteU
 |---|---|---|---|
 | `outputBackendTemplate` | `InjectLivePreviewListener` | — | Injects sidebar HTML + CSS/JS into `be_main`. Skips `?popup=1` / `?picker`. |
 | `parseFrontendTemplate` | `InjectArticleMarkersListener` | — | Auto-injects `data-contao-table="tl_article"` + `data-contao-id` on article wrapper when `?_clp=1`. Skips if theme already provides them. |
-| `getContentElement` | `InjectContentElementMarkersListener` | — | Auto-injects `data-contao-table="tl_content"` + `data-contao-id` + `data-contao-label` on CE wrapper when `?_clp=1`. Covers legacy `ContentElement` subclasses and RSCE. Twig-first `#[AsContentElement]` CEs bypass this hook and are handled by `InjectTwigContentElementMarkersListener`. |
+| `getContentElement` | `InjectContentElementMarkersListener` | — | Auto-injects `data-contao-table="tl_content"` + `data-contao-id` + `data-contao-label` on CE wrapper when `?_clp=1`. Covers legacy `ContentElement` subclasses, RSCE, and Twig-first `#[AsContentElement]` CEs alike — in Contao 6 this hook fires for all of them (ADR-022 point 13). |
 | `getFrontendModule` | `InjectModuleMarkersListener` | — | Auto-injects `data-contao-table="tl_module"` + `data-contao-id` + `data-contao-label` on frontend module wrappers when `?_clp=1`. Fires inside `Controller::getFrontendModule()` which covers all layout modules (preloaded by `PageRegular`) and explicit `{{insert_module::N}}` / `{{ frontend_module(N) }}` calls. Module labels from `$GLOBALS['TL_LANG']['FMD']`. |
-
-`KernelEvents::RESPONSE` (priority -195): `InjectTwigContentElementMarkersListener` annotates Twig-first CE wrappers via DBAL lookup + type+position matching. Runs before `-200` so data attributes are present when the inline script is injected.
 
 `KernelEvents::RESPONSE` (priority -200): `InjectPreviewScriptListener` injects the highlight + hover inline script before `</body>` when `?_clp=1` and content type is `text/html`.
 
