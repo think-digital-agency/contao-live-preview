@@ -74,14 +74,26 @@ class InjectPreviewScriptListener
 .clp-sel::before{content:'';display:block;position:absolute;top:0;left:0;width:100%;height:100%;outline:2px solid #0594ff!important;outline-offset:-2px;z-index:2147483647;pointer-events:none}
 .clp-sel-secondary::before{content:'';display:block;position:absolute;top:0;left:0;width:100%;height:100%;outline:2px dashed #0594ff!important;outline-offset:-2px;z-index:2147483647;pointer-events:none}
 .clp-hover::before{content:'';display:block;position:absolute;top:0;left:0;width:100%;height:100%;outline:2px dashed #d946ef!important;outline-offset:-2px;z-index:2147483647;pointer-events:none}
-.clp-badge,.clp-hover-badge{position:absolute;display:flex;align-items:center;gap:5px;color:#fff;font:700 11px/1 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;padding:7px 9px 8px 10px;border-radius:3px;white-space:nowrap;transition:top .15s}
+/* align-items:stretch (not center) lets the icon buttons below self-stretch
+   to the badge's full content height; the label is pinned back to vertical
+   centering explicitly since text shouldn't stretch. */
+.clp-badge,.clp-hover-badge{position:absolute;display:flex;align-items:stretch;gap:5px;color:#fff;font:700 11px/1 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;padding:7px 9px 8px 10px;border-radius:3px;white-space:nowrap;transition:top .15s}
 .clp-badge{background:#0594ff;z-index:2147483647}
 .clp-hover-badge{background:#d946ef;z-index:2147483647}
-.clp-badge-edit{all:unset;display:flex;align-items:center;cursor:pointer;opacity:.75;border-radius:4px;transition:opacity .15s,background-color .15s;pointer-events:auto;padding:8px;margin:-8px}
-.clp-badge-edit:hover{opacity:1;background-color:rgba(0,0,0,.15)}
+.clp-badge-label{align-self:center}
+/* Negative top/bottom margin exactly cancels the badge's own vertical
+   padding so align-self:stretch reaches the badge's real top/bottom edge —
+   the hover fill then runs the full height, as requested, rather than a
+   floating chip. Horizontal sizing is real padding, not a negative-margin
+   hit-area trick: a flex sibling's box can never overlap another sibling's
+   box in normal flow, so this is what actually keeps the fill off the label
+   and the separator, however big the padding is tuned to. No border-radius —
+   it's meant to read as a full-height column, not a floating pill. */
+.clp-badge-edit{all:unset;display:flex;align-items:center;justify-content:center;align-self:stretch;cursor:pointer;opacity:.75;transition:opacity .15s,background-color .15s;pointer-events:auto;margin:-7px 0 -8px;padding:0 8px}
+.clp-badge-edit:hover{opacity:1;background-color:rgba(0,0,0,.18)}
 .clp-badge-sep{display:inline-block;width:1px;height:12px;background:rgba(255,255,255,.3);margin:0 2px;flex-shrink:0;align-self:center}
-.clp-badge-action{all:unset;display:flex;align-items:center;justify-content:center;cursor:pointer;opacity:.75;border-radius:4px;transition:opacity .15s,background-color .15s;pointer-events:auto;padding:5px;margin:-5px -2px;line-height:1}
-.clp-badge-action:hover{opacity:1;background-color:rgba(0,0,0,.15)}
+.clp-badge-action{all:unset;display:flex;align-items:center;justify-content:center;align-self:stretch;cursor:pointer;opacity:.75;transition:opacity .15s,background-color .15s;pointer-events:auto;margin:-7px 0 -8px;padding:0 8px;line-height:1}
+.clp-badge-action:hover{opacity:1;background-color:rgba(0,0,0,.18)}
 /* Box model lines — horizontal ones span full doc width, vertical ones span full doc height */
 .clp-bm-h{position:absolute;left:0;right:0;height:1px;pointer-events:none;display:none}
 .clp-bm-v{position:absolute;top:0;bottom:0;width:1px;pointer-events:none;display:none}
@@ -394,7 +406,7 @@ function _sortButtons(buttons){
 }
 function _mkBadge(cls,lbl,table,editId,parentTable,el){
   var b=document.createElement('div');b.className=cls;
-  var s=document.createElement('span');s.textContent=lbl;b.appendChild(s);
+  var s=document.createElement('span');s.className='clp-badge-label';s.textContent=lbl;b.appendChild(s);
   var vis=el?clpVisTarget(el):null;
   var ceType=(el&&table==='tl_content')?getCeType(el):null;
   var ctx={table:table,id:editId||0,parentTable:parentTable||'',el:el||null,vis:vis,ceType:ceType,ceLabel:el&&ceType?getCeLabel(el):null};
