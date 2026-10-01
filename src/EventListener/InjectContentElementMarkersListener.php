@@ -25,6 +25,18 @@ use ThinkDigital\ContaoLivePreview\Service\LabelCleanerTrait;
  * only checks the opening tag, so a container whose children are already
  * marked by the time this hook runs for the container itself still gets its
  * own wrapper marked correctly.
+ *
+ * Known regression risk (PR #22 review): "the getContentElement hook still
+ * fires for #[AsContentElement] controllers" is a behavioral assumption
+ * about Contao core, not this bundle's own code — the same kind of
+ * assumption that was wrong before and motivated the now-deleted
+ * InjectTwigContentElementMarkersListener (ADR-022 point 13). Verification
+ * before removing that class covered a leaf CE, three Design+ fragment
+ * types and one group CE (Accordion), not core's own Twig-first CE types
+ * (image, html, list, table, form, …). No automated test exercises this
+ * hook (it needs a rendering pass, not just mocks — see tests/Service/ for
+ * the resolver coverage that exists instead). Re-check manually against
+ * core's built-in CE types on any contao/core-bundle minor upgrade.
  */
 #[AsHook('getContentElement')]
 class InjectContentElementMarkersListener
@@ -63,7 +75,7 @@ class InjectContentElementMarkersListener
 
         return preg_replace(
             '/(<[a-z][a-z0-9]*\b)/i',
-            '$1 data-contao-table="tl_content" data-contao-id="' . $id . '" data-contao-type="' . $element->type . '" data-contao-label="' . htmlspecialchars($label, \ENT_QUOTES | \ENT_SUBSTITUTE, 'UTF-8') . '"',
+            '$1 data-contao-table="tl_content" data-contao-id="' . $id . '" data-contao-type="' . htmlspecialchars((string) $element->type, \ENT_QUOTES | \ENT_SUBSTITUTE, 'UTF-8') . '" data-contao-label="' . htmlspecialchars($label, \ENT_QUOTES | \ENT_SUBSTITUTE, 'UTF-8') . '"',
             $buffer,
             1,
         ) ?? $buffer;

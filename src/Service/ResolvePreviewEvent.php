@@ -25,6 +25,7 @@ class ResolvePreviewEvent extends Event
     public const NAME = 'clp:resolve';
 
     private ?array $pageData = null;
+    private bool $resolved = false;
 
     public function __construct(
         private readonly string $table,
@@ -43,12 +44,14 @@ class ResolvePreviewEvent extends Event
     }
 
     /**
-     * Has a listener already resolved the context? When true, the resolver
-     * chain is skipped.
+     * Has a listener already called setPageData() — with a result or with
+     * null to say "I looked, this doesn't exist"? When true, the resolver
+     * chain is skipped either way; a listener that wants a confirmed "not
+     * found" instead of a silent fallback to the chain calls setPageData(null).
      */
     public function isResolved(): bool
     {
-        return null !== $this->pageData;
+        return $this->resolved;
     }
 
     /**
@@ -57,6 +60,7 @@ class ResolvePreviewEvent extends Event
     public function setPageData(?array $pageData): void
     {
         $this->pageData = $pageData;
+        $this->resolved = true;
     }
 
     /**

@@ -252,6 +252,86 @@ final class PreviewUrlResolverTest extends TestCase
         self::assertSame(42, $result['pageId']);
     }
 
+    public function testResolveFromContentWalksUpNestedElementGroupsToTheOwningNewsItem(): void
+    {
+        $connection = $this->createMock(Connection::class);
+        $connection->method('fetchAssociative')->willReturnMap([
+            // Leaf CE (890) is a child of a group CE (889) nested inside a
+            // news item's content (ptable='tl_news') — e.g. an Accordion
+            // placed in a news item's "text" field via the element-group
+            // editor, not a direct top-level news CE.
+            [
+                'SELECT pid, ptable, type FROM tl_content WHERE id = ?',
+                [890],
+                ['pid' => 889, 'ptable' => 'tl_content', 'type' => 'text'],
+            ],
+            [
+                'SELECT pid, ptable FROM tl_content WHERE id = ?',
+                [889],
+                ['pid' => 1, 'ptable' => 'tl_news'],
+            ],
+            [
+                'SELECT pid, alias, headline FROM tl_news WHERE id = ?',
+                [1],
+                ['pid' => 5, 'alias' => 'my-news', 'headline' => 'Headline'],
+            ],
+            [
+                'SELECT jumpTo FROM tl_news_archive WHERE id = ?',
+                [5],
+                ['jumpTo' => 42],
+            ],
+            [
+                'SELECT id, alias, language, dns FROM tl_page WHERE id = ?',
+                [42],
+                ['id' => 42, 'alias' => 'news-reader', 'language' => 'de', 'dns' => ''],
+            ],
+        ]);
+
+        $resolver = new PreviewUrlResolver($connection, $this->createMock(ContaoFramework::class));
+
+        $result = $resolver->resolve('tl_content', 890);
+
+        // contentElementId is the leaf (890), not the group it walked through.
+        self::assertSame(890, $result['contentElementId']);
+        self::assertSame(1, $result['newsId']);
+        self::assertSame(42, $result['pageId']);
+    }
+
+    public function testResolveDispatchesTopLevelNewsHighlightDirectlyToResolveFromNews(): void
+    {
+        $connection = $this->createMock(Connection::class);
+        $connection->method('fetchAssociative')->willReturnMap([
+            [
+                'SELECT pid, alias, headline FROM tl_news WHERE id = ?',
+                [1],
+                ['pid' => 5, 'alias' => 'my-news', 'headline' => 'Headline'],
+            ],
+            [
+                'SELECT jumpTo FROM tl_news_archive WHERE id = ?',
+                [5],
+                ['jumpTo' => 42],
+            ],
+            [
+                'SELECT id, alias, language, dns FROM tl_page WHERE id = ?',
+                [42],
+                ['id' => 42, 'alias' => 'news-reader', 'language' => 'de', 'dns' => ''],
+            ],
+        ]);
+
+        $resolver = new PreviewUrlResolver($connection, $this->createMock(ContaoFramework::class));
+
+        // Highlighting the tl_news record itself (not a CE inside it) — the
+        // 'tl_news' match arm in resolve(), never exercised above since every
+        // other news test reaches resolveFromNews() transitively through
+        // resolveFromContent().
+        $result = $resolver->resolve('tl_news', 1);
+
+        self::assertSame(1, $result['newsId']);
+        self::assertSame('my-news', $result['newsAlias']);
+        self::assertSame(42, $result['pageId']);
+        self::assertNull($result['contentElementId']);
+    }
+
     public function testResolveFromContentReturnsNullForAnUnrecognisedPtable(): void
     {
         $connection = $this->createMock(Connection::class);

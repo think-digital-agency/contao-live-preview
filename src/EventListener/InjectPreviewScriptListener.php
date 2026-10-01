@@ -497,6 +497,11 @@ window.addEventListener('resize',clpReposAll,{passive:true});
 var _clpSettledOnce=false;
 function clpWhenSettled(el,fn){
   if(_clpSettledOnce){requestAnimationFrame(fn);return;}
+  // Residual risk (PR #22 review): this stability check can still fire on the
+  // pre-transition 0 plateau and reproduce the exact bug the 900ms baseline
+  // above was added to fix — just on an environment slower than the 474ms
+  // worst case that baseline was measured against (heavier page, throttled
+  // CPU, a slower network). No adaptive fallback exists; see ADR-022 point 12.
   function afterBaseline(){
     var tries=0,maxTries=48,last=null;
     function check(){

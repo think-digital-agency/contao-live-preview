@@ -594,6 +594,13 @@ listener that resolves wins (and later listeners are cheap). The event and the
 tagged chain are complementary: use a **resolver service** for static
 table→page mappings, the **event** for request-dependent resolution.
 
+`setPageData(null)` is a valid, confirmed "not found" — it still marks the
+event resolved (`isResolved()` returns `true`), so the controller returns a
+404 instead of falling through to the resolver chain. Use it when your
+listener recognizes the table but determines there is nothing to preview;
+simply never calling `setPageData()` is how you say "not my table, try the
+next listener/the chain" instead.
+
 ## Namespace ownership
 
 - Unprefixed `clp:*` message types and `clp:*` registry ids are owned by this
