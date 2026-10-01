@@ -92,9 +92,13 @@ class InjectPreviewScriptListener
 var _el=null,_elVis=null,_elCe=null,_elCeVis=null,_badge=null,_badgeCe=null,_gen=0;
 var _articleId=null,_contentElementId=null;
 var _hoverEl=null,_hoverElVis=null,_hoverBadge=null;
+var _hoverParentEl=null,_hoverParentElVis=null,_hoverParentBadge=null;
 var _refreshAbort=null;
-var _badgeMargin=4;
-var _hoverBadgeMargin=6;
+// Active and hover badges share one margin (flush against the outline, no
+// gap) so a badge never jumps position when the same element transitions
+// between hover and active — only clpDeconflict()/clpDeconflictHover() ever
+// move a badge away from this baseline, and only on an actual collision.
+var _badgeMargin=0;
 var _editIcon='<svg style="flex-shrink:0" width="11" height="11" viewBox="0 0 10 10" fill="none"><path d="M7 1.5l1.5 1.5-5.5 5.5H1.5V7L7 1.5z" stroke="#fff" stroke-width="1.2" stroke-linejoin="round"/><line x1="5.8" y1="2.7" x2="7.3" y2="4.2" stroke="#fff" stroke-width="1.2"/></svg>';
 var _dupIcon='<svg style="flex-shrink:0" width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" stroke-width="1.2"><rect x="3.5" y="3.5" width="6.5" height="6.5" rx=".8"/><path d="M1 7.5V1h6.5v2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 var _addIcon='<svg style="flex-shrink:0" width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="5.5" y1="1.5" x2="5.5" y2="9.5"/><line x1="1.5" y1="5.5" x2="9.5" y2="5.5"/></svg>';
@@ -261,7 +265,17 @@ function clpVisTarget(el){var cc=String(el.className||'').split(/\s+/);for(var i
 function clpVisClassAdd(el,cls){el.classList.add(cls);if(getComputedStyle(el).position==='static')el.classList.add('clp-pos-fix');}
 function clpVisClassRemove(el,cls){el.classList.remove(cls);if(!el.classList.contains('clp-sel')&&!el.classList.contains('clp-sel-secondary')&&!el.classList.contains('clp-hover'))el.classList.remove('clp-pos-fix');}
 function clpClear(){if(_elVis){clpVisClassRemove(_elVis,'clp-sel');clpVisClassRemove(_elVis,'clp-sel-secondary');_elVis=null;}_el=null;if(_elCeVis){clpVisClassRemove(_elCeVis,'clp-sel');_elCeVis=null;}_elCe=null;if(_badge){_badge.remove();_badge=null;}if(_badgeCe){_badgeCe.remove();_badgeCe=null;}}
-function clpHoverClear(){if(_hoverElVis){clpVisClassRemove(_hoverElVis,'clp-hover');_hoverElVis=null;}_hoverEl=null;if(_hoverBadge){_hoverBadge.remove();_hoverBadge=null;}}
+// Clears both the primary hover target and the parent-boost target (see
+// mouseover below) unconditionally — on every call, not just when one of them
+// happens to be set. A previous attempt at boosting the parent's hover state
+// (ADR-022 point 6) left its badge on screen in exactly the case where this
+// clear was conditional; unconditional removal here is the fix.
+function clpHoverClear(){
+  if(_hoverElVis){clpVisClassRemove(_hoverElVis,'clp-hover');_hoverElVis=null;}_hoverEl=null;
+  if(_hoverBadge){_hoverBadge.remove();_hoverBadge=null;}
+  if(_hoverParentElVis){clpVisClassRemove(_hoverParentElVis,'clp-hover');_hoverParentElVis=null;}_hoverParentEl=null;
+  if(_hoverParentBadge){_hoverParentBadge.remove();_hoverParentBadge=null;}
+}
 function clpIsFixed(el){var n=el;while(n&&n!==document.body){if(getComputedStyle(n).position==='fixed')return true;n=n.parentElement;}return false;}
 // Container badges (article, or a group-type CE with marked children of its own —
 // Accordion, Card, Tabs, Elementgruppe, …) always render OUTSIDE/above their box,
@@ -278,10 +292,8 @@ function clpIsFixed(el){var n=el;while(n&&n!==document.body){if(getComputedStyle
 function clpBadgePos(b,el){
   var r=el.getBoundingClientRect();
   var bh=b.offsetHeight||24;
-  var m=b.classList.contains('clp-hover-badge')?_hoverBadgeMargin:_badgeMargin;
+  var m=_badgeMargin;
   var above=b.dataset.clpOutside==='1';
-  // no gap for above badges
-  if(above&&b.classList.contains('clp-hover-badge'))m=0;
   if(clpIsFixed(el)){
     b.style.position='fixed';
     b.style.top=(above?Math.max(m,r.top-bh-m):r.top+m)+'px';
@@ -303,14 +315,16 @@ function clpDeconflict(){
     _badge.style.top=((parseFloat(_badge.style.top)||0)-_badgeCe.offsetHeight)+'px';
   }
 }
+function _deconflictOne(active,hover){
+  if(active&&hover&&_rectsOverlap(active.getBoundingClientRect(),hover.getBoundingClientRect())){
+    active.style.top=((parseFloat(active.style.top)||0)-hover.offsetHeight)+'px';
+  }
+}
 function clpDeconflictHover(){
-  if(!_hoverBadge||!(_badgeCe||_badge))return;
-  if(_badge&&_rectsOverlap(_badge.getBoundingClientRect(),_hoverBadge.getBoundingClientRect())){
-    _badge.style.top=((parseFloat(_badge.style.top)||0)-_hoverBadge.offsetHeight)+'px';
-  }
-  if(_badgeCe&&_rectsOverlap(_badgeCe.getBoundingClientRect(),_hoverBadge.getBoundingClientRect())){
-    _badgeCe.style.top=((parseFloat(_badgeCe.style.top)||0)-_hoverBadge.offsetHeight)+'px';
-  }
+  _deconflictOne(_badge,_hoverBadge);
+  _deconflictOne(_badgeCe,_hoverBadge);
+  _deconflictOne(_badge,_hoverParentBadge);
+  _deconflictOne(_badgeCe,_hoverParentBadge);
 }
 // _mkBadge renders the label, then primary actions, one separator, then
 // secondary actions. ctx exposes the data the bundle already has at the call
@@ -427,7 +441,7 @@ function getCeParentTable(el){
   var m=p&&p.closest('[data-contao-table]');
   return m?m.dataset.contaoTable:'';
 }
-function clpReposAll(){if(_badge&&_elVis)clpBadgePos(_badge,_elVis);if(_badgeCe&&_elCeVis)clpBadgePos(_badgeCe,_elCeVis);if(_hoverBadge&&_hoverElVis)clpBadgePos(_hoverBadge,_hoverElVis);clpDeconflict();}
+function clpReposAll(){if(_badge&&_elVis)clpBadgePos(_badge,_elVis);if(_badgeCe&&_elCeVis)clpBadgePos(_badgeCe,_elCeVis);if(_hoverBadge&&_hoverElVis)clpBadgePos(_hoverBadge,_hoverElVis);if(_hoverParentBadge&&_hoverParentElVis)clpBadgePos(_hoverParentBadge,_hoverParentElVis);clpDeconflict();clpDeconflictHover();}
 window.addEventListener('resize',clpReposAll,{passive:true});
 function highlight(el,bh,label,table,editId){
   var vis=clpVisTarget(el);
@@ -520,6 +534,16 @@ CLP_FE.on('clp:grid',function(d){
 // Hover: fuchsia dashed outline + badge for any article/CE on the page.
 // _hoverEl = data element (for exclusion check + mouseout boundary).
 // _hoverElVis = visual target (receives outline class and badge position).
+//
+// Parent boost: hovering a CE nested directly in a group or article also
+// shows the group's/article's own hover outline+badge (_hoverParentEl/*) —
+// a leaf CE usually fills its container's entire box, leaving no room to
+// hover the container itself otherwise. The nearest marked ancestor of any
+// CE is structurally always a group CE or an article (nothing else carries
+// a data-contao-table marker), so this needs no table/type check of its own.
+// Active always wins over hover, independently for each of the two targets:
+// a parent that is itself the active element is not also given a hover
+// badge just because its child is being hovered.
 document.addEventListener('mouseover',function(e){
   if(e.target.closest&&e.target.closest('.clp-badge,.clp-hover-badge'))return;
   var el=e.target.closest?e.target.closest('[data-contao-table]'):null;
@@ -536,16 +560,33 @@ document.addEventListener('mouseover',function(e){
   clpVisClassAdd(vis,'clp-hover');
   _hoverBadge=makeHoverBadge(lbl,table,id,getCeParentTable(el),el);
   clpBadgePos(_hoverBadge,vis);
+  var parent=el.parentElement&&el.parentElement.closest?el.parentElement.closest('[data-contao-table]'):null;
+  if(parent&&parent!==_el&&parent!==_elCe){
+    var pTable=parent.dataset.contaoTable;
+    var pId=parseInt(parent.dataset.contaoId,10)||0;
+    if(pTable&&pId){
+      var pLbl=pTable==='tl_article'?'ARTIKEL':getCeLabel(parent);
+      var pVis=clpVisTarget(parent);
+      _hoverParentEl=parent;_hoverParentElVis=pVis;
+      clpVisClassAdd(pVis,'clp-hover');
+      _hoverParentBadge=makeHoverBadge(pLbl,pTable,pId,getCeParentTable(parent),parent);
+      clpBadgePos(_hoverParentBadge,pVis);
+    }
+  }
   clpDeconflictHover();
 });
-// mouseout: _hoverEl (the data/container element) defines the boundary.
-// Covers both the col-* wrapper and its single child — don't clear until cursor
-// truly leaves the container (or moves to the badge for edit-icon click).
+// mouseout: the boundary is the outermost hovered element — the parent when
+// a parent boost is active (it structurally contains the child), otherwise
+// the primary hover target. Covers both the col-* wrapper and its single
+// child — don't clear until the cursor truly leaves that boundary (or moves
+// to one of the badges, for edit-icon clicks).
 document.addEventListener('mouseout',function(e){
   if(!_hoverEl)return;
   var rel=e.relatedTarget;
-  if(rel&&(rel===_hoverEl||_hoverEl.contains(rel)))return;
+  var boundary=_hoverParentEl||_hoverEl;
+  if(rel&&(rel===boundary||boundary.contains(rel)))return;
   if(_hoverBadge&&rel&&(rel===_hoverBadge||_hoverBadge.contains(rel)))return;
+  if(_hoverParentBadge&&rel&&(rel===_hoverParentBadge||_hoverParentBadge.contains(rel)))return;
   clpHoverClear();
   clpReposAll();
 });
