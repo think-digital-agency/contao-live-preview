@@ -443,15 +443,56 @@ function getCeParentTable(el){
 }
 function clpReposAll(){if(_badge&&_elVis)clpBadgePos(_badge,_elVis);if(_badgeCe&&_elCeVis)clpBadgePos(_badgeCe,_elCeVis);if(_hoverBadge&&_hoverElVis)clpBadgePos(_hoverBadge,_hoverElVis);if(_hoverParentBadge&&_hoverParentElVis)clpBadgePos(_hoverParentBadge,_hoverParentElVis);clpDeconflict();clpDeconflictHover();}
 window.addEventListener('resize',clpReposAll,{passive:true});
+// Runs fn once el's geometry is unlikely to still be settling, not just once
+// the page has "loaded". A fresh ?_clp=1 load delivers clp:highlight as soon
+// as this injected script's own message listener is registered;
+// `document.readyState==='complete'` can already be true at that point while
+// an openOnLoad accordion panel (or any other JS-driven expand/collapse,
+// carousel init, …) hasn't started its transition yet — measured directly,
+// across repeated runs: its target element's rect read as a flat 0 for
+// 224–474ms after the highlight message arrived (the spread itself says this
+// isn't on a fixed schedule — font/resource loading, a staggered animation
+// delay, whatever it is, varies run to run), then jumped straight to its
+// final value and never changed again (no gradual animation to detect, no
+// further settling to wait out). That rules out "stop once the rect holds
+// steady across two frames" as a detector on its own — the pre-transition 0
+// reads just as steady as the post-transition real one, so a naive stability
+// check fires during the wrong plateau; a 400ms baseline tried first still
+// landed inside the slower end of that measured spread and reproduced the
+// bug. There's no generic signal for "a delayed component init is about to
+// run" to poll for instead, so this pays a fixed baseline with real margin
+// over the slower measurement (900ms, not 400) and only then starts the
+// cheap two-frame stability check — by which point the kind of delayed init
+// measured above has already happened, so the plateau the check finds is the
+// real one. The stability check's own budget caps the total wait for content
+// that keeps animating indefinitely.
+function clpWhenSettled(el,fn){
+  function afterBaseline(){
+    var tries=0,maxTries=48,last=null;
+    function check(){
+      var r=el.getBoundingClientRect();
+      var sig=r.top+'|'+r.left+'|'+r.width+'|'+r.height;
+      if(sig===last||++tries>=maxTries){fn();return;}
+      last=sig;
+      requestAnimationFrame(check);
+    }
+    requestAnimationFrame(check);
+  }
+  function go(){setTimeout(afterBaseline,900);}
+  if(document.readyState==='complete')go();else window.addEventListener('load',go,{once:true});
+}
 function highlight(el,bh,label,table,editId){
-  var vis=clpVisTarget(el);
   clpClear();_gen++;var myGen=_gen;
-  var rect=vis.getBoundingClientRect();
-  var targetY=window.scrollY+rect.top-(window.innerHeight-rect.height)/2;
-  window.scrollTo({top:Math.max(0,targetY),left:0,behavior:bh||'smooth'});
-  function apply(){if(_gen!==myGen)return;_el=el;_elVis=vis;clpVisClassAdd(vis,'clp-sel');if(label){_badge=makeBadge(label,table,editId,getCeParentTable(el),el);clpBadgePos(_badge,vis);}}
-  if((bh||'smooth')==='instant'){apply();}
-  else{var t;function hl(){clearTimeout(t);window.removeEventListener('scrollend',hl);apply();}if('onscrollend'in window)window.addEventListener('scrollend',hl,{once:true});t=setTimeout(hl,800);}
+  var vis=clpVisTarget(el);
+  clpWhenSettled(vis,function(){
+    if(_gen!==myGen)return;
+    var rect=vis.getBoundingClientRect();
+    var targetY=window.scrollY+rect.top-(window.innerHeight-rect.height)/2;
+    window.scrollTo({top:Math.max(0,targetY),left:0,behavior:bh||'smooth'});
+    function apply(){if(_gen!==myGen)return;_el=el;_elVis=vis;clpVisClassAdd(vis,'clp-sel');if(label){_badge=makeBadge(label,table,editId,getCeParentTable(el),el);clpBadgePos(_badge,vis);}}
+    if((bh||'smooth')==='instant'){apply();}
+    else{var t;function hl(){clearTimeout(t);window.removeEventListener('scrollend',hl);apply();}if('onscrollend'in window)window.addEventListener('scrollend',hl,{once:true});t=setTimeout(hl,800);}
+  });
 }
 // Incoming messages from the parent are dispatched through CLP_FE so third
 // parties can register/override handlers without patching this script. Any
@@ -479,16 +520,19 @@ CLP_FE.on('clp:highlight',function(d){
   var aEl=findEl(d.articleSelectors||[]);
   if(el&&aEl&&el!==aEl){
     var elVis=clpVisTarget(el);var aElVis=clpVisTarget(aEl);
-    clpClear();_gen++;
-    var rect=elVis.getBoundingClientRect();
-    window.scrollTo({top:Math.max(0,window.scrollY+rect.top-(window.innerHeight-rect.height)/2),left:0,behavior:d.scrollBehavior||'instant'});
+    clpClear();_gen++;var myGen=_gen;
     _elCe=el;_elCeVis=elVis;clpVisClassAdd(elVis,'clp-sel');
     _el=aEl;_elVis=aElVis;clpVisClassAdd(aElVis,'clp-sel-secondary');
-    // Prefer data-contao-label from the DOM — set by InjectContentElementMarkersListener
-    // in fully-bootstrapped frontend context, so language files are always complete.
-    var lbl=getCeLabel(el)||d.label||'';if(lbl){_badgeCe=makeBadge(lbl,'tl_content',_contentElementId,getCeParentTable(el),el);clpBadgePos(_badgeCe,elVis);}
-    var albl=d.articleLabel||'';if(albl){_badge=makeBadge(albl,'tl_article',_articleId,'',aEl);_badge.style.zIndex='2147483646';clpBadgePos(_badge,aElVis);}
-    clpDeconflict();
+    clpWhenSettled(elVis,function(){
+      if(_gen!==myGen)return;
+      var rect=elVis.getBoundingClientRect();
+      window.scrollTo({top:Math.max(0,window.scrollY+rect.top-(window.innerHeight-rect.height)/2),left:0,behavior:d.scrollBehavior||'instant'});
+      // Prefer data-contao-label from the DOM — set by InjectContentElementMarkersListener
+      // in fully-bootstrapped frontend context, so language files are always complete.
+      var lbl=getCeLabel(el)||d.label||'';if(lbl){_badgeCe=makeBadge(lbl,'tl_content',_contentElementId,getCeParentTable(el),el);clpBadgePos(_badgeCe,elVis);}
+      var albl=d.articleLabel||'';if(albl){_badge=makeBadge(albl,'tl_article',_articleId,'',aEl);_badge.style.zIndex='2147483646';clpBadgePos(_badge,aElVis);}
+      clpDeconflict();
+    });
   }else if(el||aEl){
     var isCe=!!_contentElementId;
     var isNews=!isCe&&!!d.newsId;
