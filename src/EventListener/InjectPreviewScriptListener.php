@@ -77,10 +77,15 @@ class InjectPreviewScriptListener
 /* align-items:stretch (not center) lets the icon buttons below self-stretch
    to the badge's full content height; the label is pinned back to vertical
    centering explicitly since text shouldn't stretch. */
-.clp-badge,.clp-hover-badge{position:absolute;display:flex;align-items:stretch;gap:5px;color:#fff;font:700 11px/1 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;padding:7px 9px 8px 10px;border-radius:3px;white-space:nowrap;transition:top .15s}
+.clp-badge,.clp-hover-badge{position:absolute;display:flex;align-items:stretch;color:#fff;font:700 11px/1 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;padding:7px 0 8px 10px;border-radius:3px;white-space:nowrap;transition:top .15s}
 .clp-badge{background:#0594ff;z-index:2147483647}
 .clp-hover-badge{background:#d946ef;z-index:2147483647}
-.clp-badge-label{align-self:center}
+/* No container gap: each button's own horizontal padding (below) already
+   provides spacing, including the badge's own right edge — a container gap
+   or right-padding on top of that would double it up and vary with button
+   count (1 for an article, up to 3 for a content element). Only the label
+   needs an explicit margin, since it's plain text with no padding of its own. */
+.clp-badge-label{align-self:center;margin-right:5px}
 /* Negative top/bottom margin exactly cancels the badge's own vertical
    padding so align-self:stretch reaches the badge's real top/bottom edge —
    the hover fill then runs the full height, as requested, rather than a
@@ -91,7 +96,7 @@ class InjectPreviewScriptListener
    it's meant to read as a full-height column, not a floating pill. */
 .clp-badge-edit{all:unset;display:flex;align-items:center;justify-content:center;align-self:stretch;cursor:pointer;opacity:.75;transition:opacity .15s,background-color .15s;pointer-events:auto;margin:-7px 0 -8px;padding:0 8px}
 .clp-badge-edit:hover{opacity:1;background-color:rgba(0,0,0,.18)}
-.clp-badge-sep{display:inline-block;width:1px;height:12px;background:rgba(255,255,255,.3);margin:0 2px;flex-shrink:0;align-self:center}
+.clp-badge-sep{display:inline-block;width:1px;height:12px;background:rgba(255,255,255,.3);margin:0 3px;flex-shrink:0;align-self:center}
 .clp-badge-action{all:unset;display:flex;align-items:center;justify-content:center;align-self:stretch;cursor:pointer;opacity:.75;transition:opacity .15s,background-color .15s;pointer-events:auto;margin:-7px 0 -8px;padding:0 8px;line-height:1}
 .clp-badge-action:hover{opacity:1;background-color:rgba(0,0,0,.18)}
 /* Box model lines — horizontal ones span full doc width, vertical ones span full doc height */
@@ -682,12 +687,14 @@ document.addEventListener('mouseout',function(e){
 });
 // --- Box-model line overlay (active only when body.clp-grid-on) ---
 // 32 persistent 1px divs: 16 horizontal (full doc width) + 16 vertical (full doc height).
-// 4 layers × 4 sides × 2 orientations = 32. Colors: margin=amber, border=yellow,
-// padding=green, content=blue (Chrome DevTools palette).
+// 4 layers × 4 sides × 2 orientations = 32. Colors: a Contao-orange gradient
+// instead of the Chrome DevTools palette — content (innermost) is the exact
+// brand orange (#f47c00, also used for --header-bg elsewhere in this bundle),
+// lightening outward through padding/border to margin (outermost, palest).
 // Lines at identical positions are deduplicated (e.g. when margin=0).
 var _bmLines=[];
 var _bmEl=null;
-var _bmColors={margin:'rgba(246,140,60,.9)',border:'rgba(235,195,60,.9)',padding:'rgba(73,185,100,.9)',content:'rgba(66,135,245,.9)'};
+var _bmColors={margin:'rgba(245,208,173,.9)',border:'rgba(240,179,126,.9)',padding:'rgba(242,153,78,.9)',content:'rgba(244,124,0,.9)'};
 var _bmLayers=['margin','border','padding','content'];
 // Create 16 h-lines + 16 v-lines (4 layers × 4 sides each)
 (function(){
@@ -744,6 +751,19 @@ function _bmApply(el){
   _bmEl=el;
   var pos=_bmCalcPositions(el);
   var posStr=pos.isFixed?'fixed':'absolute';
+  // Vertical lines must span the full page, not just the first viewport's
+  // worth. For position:absolute (the non-fixed, common case), their
+  // containing block is the initial containing block — body/html are never
+  // positioned here — which has viewport dimensions, not document
+  // dimensions, so `bottom:0` resolves a height capped to the viewport and
+  // the line simply ends partway down the page (visible near the top,
+  // "missing" once scrolled past that point). An explicit pixel height
+  // computed from the real document height sidesteps that; fixed-position
+  // lines keep `bottom:0` since the viewport genuinely is the right bound
+  // there (fixed elements are viewport-relative by definition).
+  var vSize=posStr==='fixed'
+    ? 'bottom:0'
+    : 'height:'+Math.max(document.documentElement.scrollHeight,document.body.scrollHeight)+'px';
   // For each of the 32 lines, compute its pixel position and show/hide
   // We iterate _bmLines in order: for each layer, we have 4 h and 4 v lines
   // h lines use side 0,1,2,3 → top, bottom (sides 0+1 are meaningful; 2+3 are spares, hide)
@@ -777,7 +797,7 @@ function _bmApply(el){
         var vKey='v'+Math.round(vx);
         if(!shown[vKey]){
           shown[vKey]=true;
-          vLine.el.style.cssText='position:'+posStr+';top:0;bottom:0;width:1px;pointer-events:none;display:block;z-index:'+vLine.el.style.zIndex+';background:'+vLine.el.style.background+';left:'+vx+'px';
+          vLine.el.style.cssText='position:'+posStr+';top:0;'+vSize+';width:1px;pointer-events:none;display:block;z-index:'+vLine.el.style.zIndex+';background:'+vLine.el.style.background+';left:'+vx+'px';
         }else{vLine.el.style.display='none';}
       }else{vLine.el.style.display='none';}
     }
@@ -787,6 +807,7 @@ document.addEventListener('mouseover',function(e){
   if(!document.body.classList.contains('clp-grid-on'))return;
   var el=e.target;
   if(!el||el.getAttribute&&el.getAttribute('data-clp-bm'))return;
+  if(el.closest&&el.closest('.clp-badge,.clp-hover-badge'))return;
   if(el===_bmEl)return;
   _bmApply(el);
 },true);
